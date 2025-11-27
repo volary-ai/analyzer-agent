@@ -1,1 +1,19 @@
 line-length = 120
+
+[lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort (import sorting)
+    "N",    # pep8-naming
+    "UP",   # pyupgrade (modern Python syntax)
+    "B",    # flake8-bugbear (common bugs)
+    "SIM",  # flake8-simplify
+]
+ignore = [
+    "E501",  # line too long (handled by formatter)
+]
+
+[lint.isort]
+known-first-party = ["src"]

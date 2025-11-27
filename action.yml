@@ -1,5 +1,14 @@
 name: Volary Analyzer Agent
 description: Analyses your repository for technical debt issues
+
+inputs:
+  completions-endpoint:
+    description: 'URL for the completions API endpoint'
+    required: false
+  completions-api-key:
+    description: 'API key for the completions endpoint'
+    required: true
+
 runs:
   using: docker
   image: Dockerfile
