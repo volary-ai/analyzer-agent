@@ -1,0 +1,5 @@
+name: Volary Analyzer Agent
+description: Analyses your repository for technical debt issues
+runs:
+  using: docker
+  image: Dockerfile
