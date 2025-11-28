@@ -83,6 +83,7 @@ def analyze(
         print_combined_usage([coordinator_agent, delegate_agent])
         return 1
 
+
 def get_repo_context() -> str:
     """
     Gather context about the repository structure and documentation.
@@ -129,6 +130,7 @@ def get_repo_context() -> str:
         return "\n".join(context_parts)
     else:
         return "No additional repository context available."
+
 
 def print_issues(data: dict, eval_scores: dict | None = None) -> int:
     table = Table(show_header=True, header_style="bold magenta")

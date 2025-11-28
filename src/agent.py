@@ -1,8 +1,9 @@
 import inspect
 import json
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
-from typing import Callable, Self, TypedDict, get_args, get_origin, get_type_hints
+from typing import Self, TypedDict, get_args, get_origin, get_type_hints
 
 import requests
 from docstring_parser import parse
@@ -139,6 +140,7 @@ def run_agent(agent, prompt="", output_schema=None):
 @dataclass
 class ToolFunction:
     """Represents the function part of a tool call."""
+
     name: str
     arguments: str  # JSON string
 
@@ -151,6 +153,7 @@ class ToolFunction:
 @dataclass
 class ToolCall:
     """Represents a tool call from the LLM."""
+
     id: str
     function: ToolFunction
     type: str  # Always "function"
@@ -167,6 +170,7 @@ class ToolCall:
 
 class ToolMessage(TypedDict):
     """Represents a tool response message."""
+
     role: str  # Always "tool"
     tool_call_id: str
     content: str
@@ -175,6 +179,7 @@ class ToolMessage(TypedDict):
 @dataclass
 class ToolCallResult:
     """Result of executing a single tool call."""
+
     call: ToolCall
     message: ToolMessage = None
     error: Exception = None
@@ -195,9 +200,9 @@ class ToolCallResult:
         return json.loads(self.call.function.arguments)
 
 
-
 class TODO(TypedDict):
     """Represents a single TODO item."""
+
     content: str
     status: str  # "pending", "in_progress", or "completed"
 
@@ -276,7 +281,6 @@ class Agent:
         if stats["total_cost"] > 0:
             console.print(f"[cyan]Total cost:[/cyan] [bold]${stats['total_cost']:.6f}[/bold]")
 
-
     def _call_tool(self, tool: Callable, tool_call: ToolCall) -> ToolCallResult:
         """Execute a single tool call and return the result."""
         tool_args = json.loads(tool_call.function.arguments)
@@ -309,8 +313,7 @@ class Agent:
 
     def _maybe_update_user(self, tool_calls: list[ToolCall], messages) -> None:
         update_user_call = next(
-            (tool_call for tool_call in tool_calls
-             if tool_call.function.name == _UPDATE_USER_FUNC_NAME),
+            (tool_call for tool_call in tool_calls if tool_call.function.name == _UPDATE_USER_FUNC_NAME),
             None,  # default if no match
         )
         if not update_user_call:
@@ -336,8 +339,7 @@ class Agent:
     def _maybe_set_todos(self, tool_calls: list[ToolCall], messages: list) -> None:
         """Handle set_todos pseudo-tool calls."""
         set_todos_call = next(
-            (tool_call for tool_call in tool_calls
-             if tool_call.function.name == _SET_TODOS_FUNC_NAME),
+            (tool_call for tool_call in tool_calls if tool_call.function.name == _SET_TODOS_FUNC_NAME),
             None,  # default if no match
         )
         if not set_todos_call:
@@ -362,8 +364,7 @@ class Agent:
 
         # Filter to actual tool calls (excluding pseudo-tools)
         actual_tool_calls = [
-            tc for tc in tool_calls
-            if tc.function.name not in [_UPDATE_USER_FUNC_NAME, _SET_TODOS_FUNC_NAME]
+            tc for tc in tool_calls if tc.function.name not in [_UPDATE_USER_FUNC_NAME, _SET_TODOS_FUNC_NAME]
         ]
 
         if len(actual_tool_calls) == 0:
@@ -373,8 +374,7 @@ class Agent:
         with ThreadPoolExecutor(max_workers=min(len(actual_tool_calls), 10)) as executor:
             # Submit all tool calls
             future_to_call = {
-                executor.submit(self._call_tool, tool_map[tc.function.name], tc): tc
-                for tc in actual_tool_calls
+                executor.submit(self._call_tool, tool_map[tc.function.name], tc): tc for tc in actual_tool_calls
             }
 
             # Collect results as they complete
@@ -409,16 +409,10 @@ class Agent:
         console.print("\n[bold cyan]TODO List:[/bold cyan]")
         if self.todos:
             for todo in self.todos:
-                status_marker = {
-                    "pending": "[ ]",
-                    "in_progress": "[→]",
-                    "completed": "[✓]"
-                }.get(todo["status"], "[ ]")
-                status_color = {
-                    "pending": "white",
-                    "in_progress": "yellow",
-                    "completed": "green"
-                }.get(todo["status"], "white")
+                status_marker = {"pending": "[ ]", "in_progress": "[→]", "completed": "[✓]"}.get(todo["status"], "[ ]")
+                status_color = {"pending": "white", "in_progress": "yellow", "completed": "green"}.get(
+                    todo["status"], "white"
+                )
                 console.print(f"  [{status_color}]{status_marker} {escape(todo['content'])}[/{status_color}]")
         else:
             console.print("  [dim](empty)[/dim]")
@@ -440,10 +434,12 @@ class Agent:
     def run(self, task: str = "", prompt: str = "", output_schema: dict = None) -> str:
         messages = []
         if prompt:
-            messages.append({
-                "role": "user",
-                "content": prompt,
-            })
+            messages.append(
+                {
+                    "role": "user",
+                    "content": prompt,
+                }
+            )
         self.task = task
 
         # Print task at the start if provided
@@ -460,22 +456,24 @@ class Agent:
             if self.todos:
                 todo_summary = []
                 for todo in self.todos:
-                    status_marker = {
-                        "pending": "[ ]",
-                        "in_progress": "[→]",
-                        "completed": "[✓]"
-                    }.get(todo["status"], "[ ]")
+                    status_marker = {"pending": "[ ]", "in_progress": "[→]", "completed": "[✓]"}.get(
+                        todo["status"], "[ ]"
+                    )
                     todo_summary.append(f"{status_marker} {todo['content']}")
 
-                messages.append({
-                    "role": "system",
-                    "content": "Reminder: You are currently doing the following:\n" + "\n".join(todo_summary)
-                })
+                messages.append(
+                    {
+                        "role": "system",
+                        "content": "Reminder: You are currently doing the following:\n" + "\n".join(todo_summary),
+                    }
+                )
             else:
-                messages.append({
-                    "role": "system",
-                    "content": "Reminder: you currently have no items in your TODO list",
-                })
+                messages.append(
+                    {
+                        "role": "system",
+                        "content": "Reminder: you currently have no items in your TODO list",
+                    }
+                )
 
             # Call the API with response_format from the start
             result = complete(
@@ -524,7 +522,7 @@ class Agent:
                 return content
 
             # Print reasoning if present (from extended thinking models)
-            reasoning = assistant_message.get('reasoning')
+            reasoning = assistant_message.get("reasoning")
             if reasoning:
                 console.print("\n[dim cyan]Reasoning:[/dim cyan]")
                 console.print(f"[dim italic]{escape(reasoning)}[/dim italic]")
@@ -612,7 +610,7 @@ def _python_type_to_json_schema(python_type):
             item_type = args[0]
 
             # Check if the list item is a TypedDict
-            if hasattr(item_type, '__annotations__'):
+            if hasattr(item_type, "__annotations__"):
                 # Build object schema from TypedDict annotations
                 properties = {}
                 required = []
@@ -621,11 +619,7 @@ def _python_type_to_json_schema(python_type):
                     properties[field_name] = {"type": json_type}
                     required.append(field_name)
 
-                return "array", {
-                    "type": "object",
-                    "properties": properties,
-                    "required": required
-                }
+                return "array", {"type": "object", "properties": properties, "required": required}
             else:
                 json_type, _ = _python_type_to_json_schema(item_type)
                 return "array", {"type": json_type}

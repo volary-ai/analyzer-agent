@@ -1,7 +1,7 @@
 import glob as glob_module
 import subprocess
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 import pathspec
 
@@ -56,6 +56,7 @@ def _should_ignore(path: str) -> bool:
     # Check against .gitignore patterns
     return spec.match_file(path)
 
+
 # Cache the gitignore spec to avoid reading it multiple times
 _gitignore_spec = None
 
@@ -71,6 +72,7 @@ def _get_gitignore_spec():
         else:
             _gitignore_spec = pathspec.PathSpec.from_lines("gitwildmatch", [])
     return _gitignore_spec
+
 
 def read_file(path: str, from_line: str = None, to_line: str = None) -> str:
     """
@@ -113,6 +115,7 @@ def read_file(path: str, from_line: str = None, to_line: str = None) -> str:
                 return "\n".join(f"{i:4d}→{line.rstrip()}" for i, line in enumerate(lines, start=start_num))
 
             return "\n".join(f"{i:4d}→{line.rstrip()}" for i, line in enumerate(lines, start=1))
+
 
 def grep(pattern: str, path: str = ".", file_pattern: str = "*") -> str:
     """
@@ -162,8 +165,9 @@ def grep(pattern: str, path: str = ".", file_pattern: str = "*") -> str:
     except Exception as e:
         return f"Error executing grep: {str(e)}"
 
+
 def delegate_task_to_agent(delegee: Agent, repo_context: str) -> Callable:
-    def delegate_task(task:str, description:str):
+    def delegate_task(task: str, description: str):
         """
         Delegates a task to a sub-agent to perform a complex step in analysing the repo.
 
@@ -197,4 +201,5 @@ def delegate_task_to_agent(delegee: Agent, repo_context: str) -> Callable:
 
         prompt = DELEGATED_TASK_PROMPT.format(task=description, status=repo_context)
         return delegee.run(task=task, prompt=prompt)
+
     return delegate_task
