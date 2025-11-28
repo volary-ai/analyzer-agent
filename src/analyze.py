@@ -3,9 +3,9 @@ from pathlib import Path
 
 from rich.table import Table
 
-from .agent import Agent, APIKeyMissingError, console, print_combined_usage, run_agent
+from .agent import Agent, APIKeyMissingError, console, print_combined_usage
 from .prompts import COORDINATOR_PROMPT, START_ANALYSIS_PROMPT
-from .schemas import TECH_DEBT_OUTPUT_SCHEMA
+from .output_schemas import TechDebtAnalysis
 from .tools import delegate_task_to_agent, grep, ls, read_file
 
 DEFAULT_COMPLETION_ENDPOINT = "https://openrouter.ai/api/v1/chat/completions"
@@ -63,15 +63,18 @@ def analyze(
 
     try:
         analysis_prompt = START_ANALYSIS_PROMPT.format(status=repo_context)
-        data = run_agent(coordinator_agent, prompt=analysis_prompt, output_schema=TECH_DEBT_OUTPUT_SCHEMA)
+        analysis = coordinator_agent.run(
+            prompt=analysis_prompt,
+            output_class=TechDebtAnalysis,
+        )
 
-        if not data["issues"]:
+        if not analysis.issues:
             console.print("\n[green]No technical debt issues found![/green]")
             # Print usage stats
             print_combined_usage([coordinator_agent, delegate_agent])
             return 0
 
-        result = print_issues(data)
+        result = print_issues(analysis)
 
         # Print usage stats at the end
         print_combined_usage([coordinator_agent, delegate_agent])
