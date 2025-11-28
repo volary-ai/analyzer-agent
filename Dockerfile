@@ -2,13 +2,16 @@ FROM python:3.12-slim
 
 WORKDIR /action
 
-# Copy requirements and install dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Install uv
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
-# Copy the source code and entrypoint
+# Copy project files
+COPY pyproject.toml .
 COPY src/ ./src/
 COPY action.py .
 
+# Install dependencies using uv
+RUN uv sync --frozen --no-dev
+
 # Set the entrypoint
-ENTRYPOINT ["python", "/action/action.py"]
+ENTRYPOINT ["uv", "run", "python", "/action/action.py"]
