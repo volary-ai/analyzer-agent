@@ -8,6 +8,12 @@ inputs:
   completions-api-key:
     description: 'API key for the completions endpoint'
     required: true
+  coordinator-model:
+    description: 'Model to use for coordinating the tech debt analysis'
+    required: false
+  delegate-model:
+    description: 'Model to use for running delegated tasks'
+    required: false
 
 runs:
   using: docker
