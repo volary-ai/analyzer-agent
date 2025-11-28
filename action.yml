@@ -9,7 +9,7 @@ inputs:
     description: 'API key for the completions endpoint'
     required: true
   coordinator-model:
-    description: 'Model to use for coordinating the tech debt analysis'
+    description: 'Model to use for coordinating the tech debt analysis and evaluation'
     required: false
   delegate-model:
     description: 'Model to use for running delegated tasks'
