@@ -3,12 +3,23 @@ import json
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
-from typing import Self, TypedDict, get_args, get_origin, get_type_hints
+from typing import (
+    Self,
+    TypedDict,
+    TypeVar,
+    get_args,
+    get_origin,
+    get_type_hints,
+    overload,
+)
 
 import requests
 from docstring_parser import parse
+from pydantic import BaseModel
 from rich.console import Console
 from rich.markup import escape
+
+TBaseModel = TypeVar("TBaseModel", bound=BaseModel)
 
 _UPDATE_USER_FUNC_NAME = "update_user"
 _SET_TODOS_FUNC_NAME = "set_todos"
@@ -65,6 +76,7 @@ def update_user(msg: str) -> None:
 
     :param msg: The message to display to the user
     """
+    pass
 
 
 def complete(
@@ -112,7 +124,10 @@ def complete(
     try:
         resp = requests.post(
             url=endpoint,
-            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
             json=payload,
             timeout=60,
         )
@@ -126,15 +141,6 @@ def complete(
         return resp.json()
     except json.JSONDecodeError as e:
         raise CompletionApiError(f"Failed to parse JSON response: {e}") from e
-
-
-def run_agent(agent, prompt="", output_schema=None):
-    """Runs the agent once, returning its decoded output."""
-    result = agent.run(prompt=prompt, output_schema=output_schema)
-    try:
-        return json.loads(result)
-    except json.JSONDecodeError as e:
-        raise Exception(f"Error parsing JSON response: {e}\nRaw response: {result}") from e
 
 
 @dataclass
@@ -230,6 +236,8 @@ class Agent:
             "total_cost": 0.0,
             "iterations": 0,
         }
+        # Store messages from last run for continuation
+        self.messages = []
 
     def _update_usage(self, result: dict) -> None:
         """Update usage statistics from API response."""
@@ -311,7 +319,7 @@ class Agent:
                 },
             )
 
-    def _maybe_update_user(self, tool_calls: list[ToolCall], messages) -> None:
+    def _maybe_update_user(self, tool_calls: list[ToolCall]) -> None:
         update_user_call = next(
             (tool_call for tool_call in tool_calls if tool_call.function.name == _UPDATE_USER_FUNC_NAME),
             None,  # default if no match
@@ -328,7 +336,7 @@ class Agent:
             console.print(f"\n[bold white]{escape(msg)}[/bold white]")
 
         # Add success response to messages
-        messages.append(
+        self.messages.append(
             {
                 "role": "tool",
                 "tool_call_id": tool_id,
@@ -336,7 +344,7 @@ class Agent:
             }
         )
 
-    def _maybe_set_todos(self, tool_calls: list[ToolCall], messages: list) -> None:
+    def _maybe_set_todos(self, tool_calls: list[ToolCall]) -> None:
         """Handle set_todos pseudo-tool calls."""
         set_todos_call = next(
             (tool_call for tool_call in tool_calls if tool_call.function.name == _SET_TODOS_FUNC_NAME),
@@ -346,11 +354,11 @@ class Agent:
             return
 
         result = self._call_tool(self.set_todos, set_todos_call)
-        messages.append(result.message)
+        self.messages.append(result.message)
 
         self._render_todos()
 
-    def _call_tools(self, tool_calls_raw: list[dict], messages: list) -> None:
+    def _call_tools(self, tool_calls_raw: list[dict]) -> None:
         """Execute tool calls from the LLM."""
         tool_calls = [ToolCall.from_dict(tc) for tc in tool_calls_raw]
 
@@ -359,8 +367,8 @@ class Agent:
         tool_map["set_todos"] = self.set_todos
 
         # Handle pseudo-tools first (they print before actual tool execution logs)
-        self._maybe_update_user(tool_calls, messages)
-        self._maybe_set_todos(tool_calls, messages)
+        self._maybe_update_user(tool_calls)
+        self._maybe_set_todos(tool_calls)
 
         # Filter to actual tool calls (excluding pseudo-tools)
         actual_tool_calls = [
@@ -402,17 +410,23 @@ class Agent:
                     )
 
             # Add all messages to the message list
-            messages.extend([r.message for r in results])
+            self.messages.extend([r.message for r in results])
 
     def _render_todos(self) -> None:
         """Render the current TODO list to the console."""
         console.print("\n[bold cyan]TODO List:[/bold cyan]")
         if self.todos:
             for todo in self.todos:
-                status_marker = {"pending": "[ ]", "in_progress": "[→]", "completed": "[✓]"}.get(todo["status"], "[ ]")
-                status_color = {"pending": "white", "in_progress": "yellow", "completed": "green"}.get(
-                    todo["status"], "white"
-                )
+                status_marker = {
+                    "pending": "[ ]",
+                    "in_progress": "[→]",
+                    "completed": "[✓]",
+                }.get(todo["status"], "[ ]")
+                status_color = {
+                    "pending": "white",
+                    "in_progress": "yellow",
+                    "completed": "green",
+                }.get(todo["status"], "white")
                 console.print(f"  [{status_color}]{status_marker} {escape(todo['content'])}[/{status_color}]")
         else:
             console.print("  [dim](empty)[/dim]")
@@ -431,10 +445,27 @@ class Agent:
         self.todos = todos
         return f"TODO list updated with {len(todos)} items"
 
-    def run(self, task: str = "", prompt: str = "", output_schema: dict = None) -> str:
-        messages = []
+    def _run(
+        self,
+        task: str = "",
+        prompt: str = "",
+        output_schema: dict | None = None,
+        should_continue: bool = False,
+    ) -> str:
+        """
+        Internal method that runs the agent loop and returns the raw string content.
+        Continues from previous messages if they exist.
+
+        :param task: Optional task description for logging
+        :param prompt: Optional user prompt to start with
+        :param output_schema: Optional JSON schema for structured output
+        :return: Raw string content from the LLM
+        """
+        if not should_continue:
+            self.messages = []
+
         if prompt:
-            messages.append(
+            self.messages.append(
                 {
                     "role": "user",
                     "content": prompt,
@@ -456,19 +487,21 @@ class Agent:
             if self.todos:
                 todo_summary = []
                 for todo in self.todos:
-                    status_marker = {"pending": "[ ]", "in_progress": "[→]", "completed": "[✓]"}.get(
-                        todo["status"], "[ ]"
-                    )
+                    status_marker = {
+                        "pending": "[ ]",
+                        "in_progress": "[→]",
+                        "completed": "[✓]",
+                    }.get(todo["status"], "[ ]")
                     todo_summary.append(f"{status_marker} {todo['content']}")
 
-                messages.append(
+                self.messages.append(
                     {
                         "role": "system",
                         "content": "Reminder: You are currently doing the following:\n" + "\n".join(todo_summary),
                     }
                 )
             else:
-                messages.append(
+                self.messages.append(
                     {
                         "role": "system",
                         "content": "Reminder: you currently have no items in your TODO list",
@@ -479,7 +512,7 @@ class Agent:
             result = complete(
                 system_prompt=self.instruction,
                 tools=self.tools + [self.set_todos, update_user],
-                messages=messages,
+                messages=self.messages,
                 response_format=response_format,
                 model=self.model,
                 api_key=self.api_key,
@@ -491,7 +524,7 @@ class Agent:
 
             first_choice = result["choices"][0]
             assistant_message = first_choice["message"]
-            messages.append(assistant_message)
+            self.messages.append(assistant_message)
 
             finish_reason = first_choice.get("finish_reason")
             tool_calls = assistant_message.get("tool_calls")
@@ -506,7 +539,7 @@ class Agent:
                         )
                         empty_retries -= 1
                         # Add a user message prompting the LLM to try again
-                        messages.append(
+                        self.messages.append(
                             {
                                 "role": "user",
                                 "content": "Please provide the requested output in the specified format. You did not produce any output in your last response.",
@@ -530,16 +563,78 @@ class Agent:
             if assistant_message.get("content"):
                 console.print(f"\n[bold white]{escape(assistant_message['content'])}[/bold white]")
 
-            self._call_tools(tool_calls, messages)
+            self._call_tools(tool_calls)
 
         # Reached max iterations without completing
         console.print(f"\n[dim]Reached maximum iterations ({self.max_iterations})[/dim]")
-        last_message = messages[-1] if messages else None
+        last_message = self.messages[-1] if self.messages else None
         raise MaxIterationsReachedError(
             f"Agent reached maximum iterations ({self.max_iterations}) without completing. "
             f"Last message finish reason: {last_message.get('finish_reason') if last_message else 'N/A'}. "
             f"Consider increasing max_iterations or checking if the agent is stuck in a loop."
         )
+
+    @overload
+    def run(self, task: str = "", prompt: str = "", should_continue: bool = False) -> str:
+        pass  # Used for typing exclusively
+
+    @overload
+    def run(
+        self,
+        task: str = "",
+        prompt: str = "",
+        output_class: type[TBaseModel] = ...,
+        should_continue: bool = False,
+    ) -> TBaseModel:
+        pass  # Used for typing exclusively
+
+    def run(
+        self,
+        task: str = "",
+        prompt: str = "",
+        output_class: type[TBaseModel] | None = None,
+        should_continue: bool = False,
+    ) -> str | TBaseModel:
+        """
+        Run the agent and return results.
+
+        :param task: Optional task description for logging
+        :param prompt: Optional user prompt to start with
+        :param output_class: Optional Pydantic model class to validate and parse output
+        :param should_continue: Whether the agent should continue from the previous context messages, or start a new thread.
+        :return: If model_class provided, returns instance of that model; otherwise returns raw string
+        """
+        # If model_class is provided, derive the schema and parse the result
+        if output_class is not None:
+            if BaseModel is None or not issubclass(output_class, BaseModel):
+                raise ValueError("model_class must be a Pydantic BaseModel subclass")
+
+            # Generate schema from Pydantic model
+            schema = output_class.model_json_schema()
+            output_schema = {
+                "name": output_class.__name__.lower(),
+                "strict": False,
+                "schema": schema,
+            }
+
+            # Run with schema
+            result = self._run(
+                task=task,
+                prompt=prompt,
+                output_schema=output_schema,
+                should_continue=should_continue,
+            )
+
+            # Parse and validate with Pydantic
+            try:
+                return output_class.model_validate_json(result)
+            except Exception as e:
+                raise Exception(
+                    f"Error validating response with {output_class.__name__}: {e}\nRaw response: {result}"
+                ) from e
+
+        # Otherwise, just return the raw string
+        return self._run(task=task, prompt=prompt, should_continue=should_continue)
 
 
 def tool_prompt(tool: Callable) -> dict:
@@ -592,7 +687,11 @@ def tool_prompt(tool: Callable) -> dict:
         "function": {
             "name": name,
             "description": description,
-            "parameters": {"type": "object", "properties": properties, "required": required},
+            "parameters": {
+                "type": "object",
+                "properties": properties,
+                "required": required,
+            },
         },
     }
 
@@ -619,14 +718,24 @@ def _python_type_to_json_schema(python_type):
                     properties[field_name] = {"type": json_type}
                     required.append(field_name)
 
-                return "array", {"type": "object", "properties": properties, "required": required}
+                return "array", {
+                    "type": "object",
+                    "properties": properties,
+                    "required": required,
+                }
             else:
                 json_type, _ = _python_type_to_json_schema(item_type)
                 return "array", {"type": json_type}
         return "array", {"type": "string"}
 
     # Handle basic types
-    type_mapping = {str: "string", int: "integer", float: "number", bool: "boolean", dict: "object"}
+    type_mapping = {
+        str: "string",
+        int: "integer",
+        float: "number",
+        bool: "boolean",
+        dict: "object",
+    }
 
     return type_mapping.get(python_type, "string"), None
 
