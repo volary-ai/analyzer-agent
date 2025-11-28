@@ -1,0 +1,163 @@
+{
+  "issues": [
+    {
+      "title": "Introduce automated dependency & vulnerability management for Go, Node, Python, Terraform",
+      "kind": "Out of date libraries or frameworks",
+      "files": [
+        "go.mod",
+        "go.sum",
+        "package.json",
+        "package-lock.json",
+        "frontend/package.json",
+        "frontend/package-lock.json",
+        "cmd/base_image/requirements.txt",
+        "examples/accelerate/requirements.txt",
+        "examples/pytorch_ddp/requirements.txt",
+        "examples/pytorch_ddp_torchrun/requirements.txt",
+        "examples/pytorch_simple/requirements.txt",
+        ".github/dependabot.yml (to add)"
+      ],
+      "short_description": "Set up automated tooling to keep dependencies current and surface CVEs early.\n\n",
+      "recommended_action": "1) Add Dependabot or Renovate configuration:\n   - Create .github/dependabot.yml (or renovate.json) with update rules for:\n     - Go modules: go.mod, go.sum\n     - Node: package.json, package-lock.json, frontend/package.json, frontend/package-lock.json\n     - Python: cmd/base_image/requirements.txt, examples/**/requirements.txt\n     - (Optional) Terraform: terraform/** (use ecosystem=\"terraform\" in Dependabot or appropriate Renovate manager).\n2) In CI, add basic security checks:\n   - Go: run `go list -m -u all` in a non-failing job and surface out-of-date modules in logs.\n   - Node (top-level and frontend): run `npm audit --audit-level=high` (or equivalent) and fail on high/critical.\n   - Terraform: enable `terraform init -upgrade` in a scheduled job to detect provider updates.\n3) Document the process:\n   - In README.md or docs/, add a short section: how dependency update PRs are created, how to review them, and which test suites to run before merging.\n\nOutcome:\n- Regular, small dependency bumps instead of large, painful upgrades; faster reaction to vulnerabilities in firebase-tools, Next.js, Go libraries, etc."
+    },
+    {
+      "title": "Treat OpenAPI spec and TypeScript build info as generated artifacts (remove from git, generate in build)",
+      "kind": "Build and lint warnings",
+      "files": [
+        "frontend/public/openapi.json",
+        "frontend/tsconfig.tsbuildinfo",
+        "frontend/Makefile",
+        "frontend/openapi_test.go",
+        "cmd/openapi/main.go"
+      ],
+      "short_description": "frontend/public/openapi.json and frontend/tsconfig.tsbuildinfo are generated artifacts but are committed. Keeping build outputs in git increases merge conflicts and the risk of stale artifacts.\n\n",
+      "recommended_action": "1) Stop tracking generated files:\n   - Remove from git:\n     - `git rm frontend/public/openapi.json`\n     - `git rm frontend/tsconfig.tsbuildinfo`\n   - Add them to .gitignore (or frontend/.gitignore if you prefer):\n     - `frontend/public/openapi.json`\n     - `frontend/tsconfig.tsbuildinfo`\n2) Ensure OpenAPI JSON is always generated as part of frontend builds:\n   - Already present: frontend/Makefile target:\n     - `openapi: @go run github.com/volary-ai/volary/cmd/openapi -d .. > public/openapi.json`\n   - Confirm package.json scripts:\n     - `dev`: `make openapi && next dev`\n     - `build`: `make openapi && next build`\n   - Verify these still work after removing the committed JSON by running `npm run dev` and `npm run build` in frontend/.\n3) Keep the test in sync:\n   - frontend/openapi_test.go already validates that OpenAPI generation works from frontend/openapi.yaml via the Go generator, so no changes are needed beyond ensuring the test still passes.\n\nOutcome:\n- OpenAPI docs and TS build metadata are always generated from source of truth (Go routes + frontend/openapi.yaml), reducing accidental drift and merge noise."
+    },
+    {
+      "title": "Pin and document Node.js and Terraform versions for reproducible builds",
+      "kind": "Build and lint warnings",
+      "files": [
+        "frontend/package.json",
+        "package.json",
+        "terraform/platform/provider.tf",
+        "terraform/**/provider.tf",
+        "CI configuration (e.g., .github/workflows/*, to be updated)"
+      ],
+      "short_description": "Node and Terraform versions are not clearly pinned for local/CI use. Given modern Next.js (15.x), React 19, and Terraform providers, having a consistent runtime avoids subtle build failures.\n\n",
+      "recommended_action": "1) Pin Node.js versions for the frontend and tooling:\n   - In frontend/package.json, add an engines field, for example:\n     ```json\n     \"engines\": {\n       \"node\": \">=20 <23\"\n     }\n     ```\n   - Optionally also add an engines field to the top-level package.json if you run firebase-tools there.\n   - Update CI config (GitHub Actions or similar) to use the same Node version (e.g., actions/setup-node@v4 with node-version: '20.x').\n2) Make Terraform versions consistent across modules:\n   - Example: terraform/platform/provider.tf uses `required_version = \">= 1.0\"` and google provider 6.45.0.\n   - Check all terraform/*/*/provider.tf and main.tf files and ensure:\n     - A consistent `terraform.required_version` constraint (e.g., `>= 1.7, < 1.9` if that\u2019s what CI uses).\n     - Providers (google, google-beta, kubernetes, etc.) are pinned similarly across components.\n3) Optional: add Terraform lockfiles:\n   - Run `terraform init` in each root module (terraform/platform, terraform/api, terraform/files, etc.) with a consistent Terraform version and commit the generated `.terraform.lock.hcl` files.\n   - Update docs/ or README.md with the supported Terraform major version.\n\nOutcome:\n- Frontend builds and Terraform plans behave consistently across developer machines and CI, reducing \u201cworks on my machine\u201d build issues."
+    },
+    {
+      "title": "Document and periodically revalidate forked Go module replaces in go.mod",
+      "kind": "Out of date libraries or frameworks",
+      "files": [
+        "go.mod",
+        "README.md or docs/dependencies.md (to add)",
+        "CI scripts/workflows (to add optional check)"
+      ],
+      "short_description": "go.mod uses replace directives to point at forks of upstream modules (go-flags, fsnotify, Firestore). These are reasonable short-term workarounds but represent ongoing maintenance risk.\n\nRelevant lines in go.mod:\n- `replace github.com/jessevdk/go-flags => github.com/peterebden/go-flags ...` (comment says it can be removed once upstream PR #422 is merged).\n- `replace github.com/fsnotify/fsnotify => github.com/peterebden/fsnotify ...`.\n- `replace cloud.google.com/go/firestore => github.com/tatskaari/google-cloud-go/firestore ...` (comment notes an open PR in google-cloud-go).\n\n",
+      "recommended_action": "1) Create a small doc tracking these forks:\n   - Add a section in README.md or docs/dependencies.md describing:\n     - Why each replace is required (link to upstream issue/PR).\n     - How to check if it\u2019s still required.\n2) Add a simple verification script:\n   - Create a small Go or shell script (e.g., tools/check_replaces.sh) that:\n     - Greps go.mod for `replace` entries.\n     - Prints them with a reminder to check upstream before each release.\n   - Wire this script into CI as a non-fatal check on main branch.\n3) Periodically test removal:\n   - In a feature branch, comment out each replace one by one, run:\n     - `go mod tidy`\n     - `go test ./...`\n   - If tests pass and behavior is acceptable, remove that replace permanently.\n\nOutcome:\n- Clear visibility on why the project depends on forks, and a lightweight process to move back to upstream modules when possible."
+    },
+    {
+      "title": "Normalize deprecated / legacy Go dependencies (protobuf and YAML libraries)",
+      "kind": "Deprecated usages",
+      "files": [
+        "go.mod",
+        "logs/logging/logging.go (uses google.golang.org/protobuf, which is fine)",
+        "any Go files importing YAML libraries (grep to identify)"
+      ],
+      "short_description": "The module set still includes deprecated/legacy packages like github.com/golang/protobuf and multiple YAML implementations. While most usage is via modern google.golang.org/protobuf, cleaning up indirects reduces future migration risk.\n\nFindings:\n- go.mod includes `github.com/golang/protobuf v1.5.4 // indirect` (deprecated in favor of google.golang.org/protobuf).\n- Both gopkg.in/yaml.v2, gopkg.in/yaml.v3 and go.yaml.in/yaml/v2, go.yaml.in/yaml/v3 are present as indirects.\n- No direct opencensus imports were found in .go files, but go.opencensus.io remains as an indirect dep.\n\n",
+      "recommended_action": "1) Remove direct use of github.com/golang/protobuf (if any):\n   - Run `grep -R \"github.com/golang/protobuf\" .` (already no direct matches) and confirm it\u2019s only an indirect brought in by other packages.\n   - Where practical, prefer libraries that use google.golang.org/protobuf under the hood (many modern gRPC and protobuf libs already do this).\n2) Consolidate YAML usage:\n   - Run `grep -R \"gopkg.in/yaml\" .` and list call sites.\n   - Prefer a single YAML implementation (e.g., gopkg.in/yaml.v3 or sigs.k8s.io/yaml) in your own code.\n   - Update imports in your codebase to that chosen package and run `go mod tidy`.\n3) Drop unused observability libraries:\n   - Confirm there are no imports of go.opencensus.io in the code (already checked) and run `go mod tidy` to see if the indirect dep disappears.\n\nOutcome:\n- A cleaner, more modern dependency graph with fewer deprecated or duplicate foundational libraries, reducing surprise breakages over time."
+    },
+    {
+      "title": "Centralize HTTP service bootstrap logic used by cmd/api and cmd/files (and similar binaries)",
+      "kind": "Duplicate code",
+      "files": [
+        "cmd/api/main.go",
+        "cmd/files/main.go",
+        "cmd/logs/main.go",
+        "cmd/operator/main.go",
+        "common/server/server.go",
+        "new package: common/cmd/bootstrap.go (to add)"
+      ],
+      "short_description": "The main binaries (cmd/api, cmd/files, and likely cmd/logs, cmd/operator, etc.) repeat almost identical bootstrap code: parsing flags, setting up OpenTelemetry, creating Firestore, auth, IAM, Valkey, and KMS clients, building the server, and calling server.Serve.\n\nThis duplication increases the risk of subtle drift between services and makes it harder to update cross-cutting concerns (logging, tracing, client options).\n\n",
+      "recommended_action": "1) Introduce a common bootstrap package (e.g., common/cmd or common/bootstrap):\n   - Define a reusable configuration struct, for example:\n     ```go\n     type BootstrapConfig struct {\n       Server struct {\n         Host string\n         Port int\n         DrainTimeout time.Duration\n       }\n       Firebase struct { Project string }\n       Firestore struct { Database string }\n       Auth struct { Salt, KeyID, KeysLocation, Domain string }\n       Valkey struct { DiscoveryEndpoint, CACerts string; Disable bool }\n       KMS struct { KeyID string; Disable bool }\n       OpenTelemetry struct { ServiceName string }\n       // any extra service-specific options can be added as interfaces/callbacks\n     }\n     ```\n   - Implement a `Bootstrap(ctx context.Context, cfg BootstrapConfig) (*server.ServerDeps, error)` that:\n     - Initializes OTEL (using github.com/honeycombio/otel-config-go/otelconfig) when ServiceName is set.\n     - Creates Firestore, Auth, Valkey, IAM, and optional KMS clients.\n     - Returns these dependencies in a struct used by NewServer functions.\n2) Refactor cmd/api/main.go to use the bootstrap helper:\n   - Keep the existing flags structure but adapt `run(ctx)` to:\n     - Map opts into BootstrapConfig.\n     - Call Bootstrap to get clients.\n     - Call api.NewServer with the returned dependencies.\n3) Refactor cmd/files/main.go similarly:\n   - Reuse the same bootstrap helper for shared pieces (Firestore, Auth, Valkey, IAM, OTEL).\n   - Keep GCS-specific setup local in cmd/files until a natural abstraction emerges.\n4) Optionally extend to other services:\n   - cmd/logs, cmd/operator, and cmd/scheduler can use the same bootstrap for shared concerns (logging, telemetry, Firestore) over time.\n\nOutcome:\n- Reduced duplication and a single place to evolve shared infrastructure (auth, Firestore, telemetry) across all services."
+    },
+    {
+      "title": "Consolidate Firestore patterns into common/store helpers and reuse across API, files, logs, and scheduler stores",
+      "kind": "Duplicate code",
+      "files": [
+        "common/store/firestore.go",
+        "api/store/*.go",
+        "common/iam/store/*.go",
+        "files/store/firestore.go",
+        "logs/store/firestore.go",
+        "scheduler/store/firestore.go"
+      ],
+      "short_description": "Several packages implement Firestore access patterns (transactions, pagination, list-by-query) in similar but slightly different ways: api/store, common/store, common/iam/store, files/store, logs/store, scheduler/store.\n\nThis duplication increases maintenance cost and the chance of inconsistent behavior (e.g., pagination limits, error handling, retries).\n\n",
+      "recommended_action": "1) Review existing helpers in common/store:\n   - Inspect common/store/firestore.go and related files (clusters.go, organizations.go, projects.go, workloads.go) to catalog reusable patterns:\n     - Transaction helpers\n     - ID/document mapping\n     - Pagination / list operations\n2) Extend common/store with generic helper functions where gaps exist:\n   - For example:\n     - `RunTxnUpdate(ctx, client, docRef, func(existing *T) (*T, error)) error` for common read-modify-write transactions.\n     - `ListWithPagination(ctx, collection, queryOpts) ([]T, nextPageToken, error)` if multiple stores implement similar pagination logic.\n3) Refactor one store at a time to use the shared helpers:\n   - Start with api/store (e.g., api/store/checkpoints.go, api/store/groups.go, etc.).\n   - Replace inlined transaction and list code with calls into common/store.\n   - Run existing unit tests (api/store/*_test.go) to confirm behavior.\n4) Repeat for other packages:\n   - common/iam/store/*.go\n   - files/store/firestore.go\n   - logs/store/firestore.go\n   - scheduler/store/firestore.go\n\nOutcome:\n- Reduced copy-paste across Firestore access layers, more consistent behavior, and easier evolution of datastore behavior (e.g., adding retries, logging, or metrics in one place)."
+    },
+    {
+      "title": "Introduce a generic resource handler abstraction in api/v0 to remove repeated HTTP plumbing",
+      "kind": "Duplicate code",
+      "files": [
+        "api/v0/checkpoints.go",
+        "api/v0/clusters.go",
+        "api/v0/groups.go",
+        "api/v0/invitations.go",
+        "api/v0/organizations.go",
+        "api/v0/projects.go",
+        "api/v0/roles.go",
+        "api/v0/service_accounts.go",
+        "api/v0/tasks.go",
+        "api/v0/tokens.go",
+        "api/v0/workloads.go",
+        "api/v0/json.go",
+        "new file: api/v0/controller.go or common/api/resource_controller.go"
+      ],
+      "short_description": "api/v0 contains separate files for each resource (checkpoints, clusters, groups, invitations, organizations, projects, roles, service_accounts, tasks, tokens, workloads). Each file repeats similar HTTP handling logic: request parsing, validation, IAM checks, mapping public/internal references, redaction, and error-to-HTTP mapping.\n\nThis makes adding new endpoints slow and increases the risk of inconsistent behavior between resources.\n\n",
+      "recommended_action": "1) Design a small resource controller abstraction:\n   - Add a new file, e.g., api/v0/controller.go or common/api/resource_controller.go, that defines generic helpers:\n     ```go\n     type GetFunc[T any] func(ctx context.Context, id string) (*T, error)\n     type ListFunc[T any] func(ctx context.Context, params ListParams) ([]T, *PageToken, error)\n     type CreateFunc[In, Out any] func(ctx context.Context, in *In) (*Out, error)\n     type UpdateFunc[In, Out any] func(ctx context.Context, id string, in *In) (*Out, error)\n\n     func HandleGet[T any](h http.Handler, get GetFunc[T], opts HandlerOpts) http.HandlerFunc\n     func HandleList[T any](h http.Handler, list ListFunc[T], opts HandlerOpts) http.HandlerFunc\n     // etc.\n     ```\n   - HandlerOpts can hold common behaviors: IAM policy check, redaction function, mapping between public/internal references.\n2) Migrate one resource as a pilot (e.g., projects):\n   - In api/v0/projects.go, replace inlined HTTP handling with calls to the generic helpers.\n   - Use existing tests (api/v0/projects_test.go) to confirm behavior.\n3) Gradually apply to other resources:\n   - Update checkpoints, clusters, groups, etc., to use the shared handlers.\n   - Where behaviors diverge, enhance the abstraction (e.g., custom validation hooks).\n\nOutcome:\n- Consistent endpoint behavior across resources and significantly less boilerplate when adding or modifying APIs."
+    },
+    {
+      "title": "Standardize structured logging via a shared helper to avoid copy-pasted slog patterns",
+      "kind": "Non-standard or antipatterns",
+      "files": [
+        "logs/logging/logging.go",
+        "cmd/api/main.go",
+        "cmd/files/main.go",
+        "common/middleware/logger.go",
+        "new file: common/logging/logger.go"
+      ],
+      "short_description": "Many parts of the codebase manually call slog.Error/slog.Debug with repeated key-value patterns and inconsistent key names (e.g., \"error\" vs \"err\"). Examples include logs/logging/logging.go and the main services in cmd/api and cmd/files.\n\n",
+      "recommended_action": "1) Create a common logging helper package:\n   - For example: common/logging/logger.go.\n   - Provide functions such as:\n     ```go\n     func Error(ctx context.Context, msg string, err error, attrs ...any)\n     func Info(ctx context.Context, msg string, attrs ...any)\n     func Debug(ctx context.Context, msg string, attrs ...any)\n     ```\n   - These should:\n     - Always log errors under a consistent key (e.g., \"error\").\n     - Optionally derive request metadata (method, path, request ID) from context when available.\n2) Update high-traffic call sites to use the helper:\n   - cmd/api/main.go and cmd/files/main.go (error logging around client creation and server start).\n   - logs/logging/logging.go (error paths in ReadLogs and WatchLogs).\n   - Selected API/store packages where structured error logging is important.\n3) Over time, replace direct slog.* calls in other packages with the helper when touching those files.\n\nOutcome:\n- Consistent log structure across services, easier integration with log analysis tools, and less repetitive logging boilerplate."
+    },
+    {
+      "title": "Audit cmd/* tools and remove or clearly mark any binaries not used in CI/production (e.g., cmd/marvin)",
+      "kind": "Dead code",
+      "files": [
+        "cmd/marvin/main.go",
+        "cmd/sdk/*",
+        "cmd/localdev/*",
+        "cmd/smoketest/*",
+        "cmd/e2etest/*",
+        "cmd/run_tests/*",
+        "README.md or docs/tools.md (to add)"
+      ],
+      "short_description": "The cmd/ directory contains multiple binaries (api, files, logs, launcher, operator, sdk, marvin, etc.). Some of these are clearly core services, while others are helper/utility tools. At least one (cmd/marvin) appears to be used via prebuilt binaries in scripts rather than via local builds.\n\nHaving unused or unclear binaries can confuse new contributors and increase the maintenance surface.\n\n",
+      "recommended_action": "1) Inventory usage of each cmd/* binary:\n   - Search the repo for references to each command name (e.g., `grep -R \"cmd/marvin\" .` and `grep -R \"marvin\" cmd/ run_tests/`).\n   - Determine which are:\n     - Production services (api, files, logs, operator, scheduler).\n     - Developer tools (sdk, localdev, marvin, smoketest, e2etest, etc.).\n2) For developer tools that are still useful:\n   - Add a brief description to README.md or a dedicated docs/tools.md explaining:\n     - What the tool does.\n     - How to build and run it (`go build ./cmd/marvin`, etc.).\n     - Whether CI depends on it or if it is local-only.\n3) For binaries not used anywhere:\n   - Confirm with the team that they are safe to remove.\n   - Delete the unused cmd/ subdirectory and update any scripts/Makefiles if required.\n\nOutcome:\n- A clearer, smaller set of maintained binaries, with documentation for any helper tools that remain, and less potential dead code in cmd/."
+    },
+    {
+      "title": "Address selected high-impact TODOs in core execution paths (launcher, scheduler, auth)",
+      "kind": "Spaghetti code",
+      "files": [
+        "cmd/launcher/logs.go",
+        "cmd/launcher/checkpoint_watcher.go",
+        "scheduler/solver/algorithm.go",
+        "common/auth/auth.go",
+        "common/testing/setupenv/setup_env.go",
+        "operator/controller/workload_controller.go"
+      ],
+      "short_description": "There are TODO comments scattered across core components such as cmd/launcher, scheduler/solver, and common/auth. Some of these mention potentially important behavior (e.g., buffering/dropping logs, task scheduling semantics) rather than minor cleanups.\n\nRather than generically \u201cfix TODOs\u201d, focus on a small number that affect reliability or security.\n\nExamples (non-exhaustive; engineers should review in context):\n- cmd/launcher/logs.go: comment indicates the possibility of needing to drop messages instead of blocking if log handling can\u2019t keep up.\n- cmd/launcher/checkpoint_watcher.go: comment suggests improving how checkpoint files are handled to avoid overwriting.\n- scheduler/solver/algorithm.go: comments about refining behavior for different task types.\n- common/auth/auth.go: comments about potentially separating token signing and considering additional claims for broader compatibility.\n\n",
+      "recommended_action": "1) Create small tickets per behavior-focused TODO:\n   - For cmd/launcher/logs.go:\n     - Design a non-blocking logging strategy (bounded buffer with drop policy and metrics) so that slow log sinks don\u2019t block the launcher.\n     - Implement and add unit tests to verify that the launcher remains responsive under backpressure.\n   - For cmd/launcher/checkpoint_watcher.go:\n     - Define a safe file-handling strategy (e.g., renaming temp files, avoiding overwrites) and test with realistic checkpoint workflows.\n   - For scheduler/solver/algorithm.go:\n     - Clarify currently supported task types and adjust solver logic or comments to match; add tests for new or edge cases.\n   - For common/auth/auth.go:\n     - Evaluate whether token signing should be split into a separate type and whether any additional claims are required for interoperability.\n2) As each TODO is addressed, replace the comment with either implemented code or a more precise design note if deferred.\n\nOutcome:\n- The most impactful TODOs in core execution paths are either implemented or explicitly re-scoped, improving system robustness without needing to resolve every TODO in the codebase at once."
+    }
+  ]
+}

@@ -1,0 +1,129 @@
+{
+  "issues": [
+    {
+      "title": "Remove insecure KMS \"base64\" fallback and require real encryption",
+      "kind": "Security concerns",
+      "files": [
+        "common/kms/kms.go"
+      ],
+      "short_description": "KMS operations currently fall back to base64 encode/decode when the KMS client is nil, which means data may be stored unencrypted while logs only show a warning. This is a high\u2011severity security issue.\n\n",
+      "recommended_action": "- In common/kms/kms.go, locate the encrypt/decrypt functions that check if kms.client == nil and then perform base64 encode/decode.\n- Replace this fallback with a hard error:\n  - If kms.client == nil, return an error like fmt.Errorf(\"KMS client not configured\").\n- If local/dev environments rely on the fallback, add an explicit, opt\u2011in dev mode instead of silent behavior:\n  - e.g. NewClient(..., allowInsecureFallback bool) or read an env var KMS_INSECURE_TEST_MODE=true.\n  - In dev mode only, you may keep the base64 fallback, but guard it with a clear comment and log at ERROR level when used.\n- Add unit tests:\n  - Test that, by default, calling encrypt/decrypt with nil client returns an error.\n  - Test the dev\u2011mode path if you keep it (using a dedicated constructor or env).\n- Review call sites (grep for NewClient or usage of this KMS wrapper) to ensure the new error behavior is handled appropriately, returning an HTTP 500 or similar from API handlers where needed.\n- Document the requirement for configuring KMS in non\u2011dev deployments (e.g. a short comment in common/kms/kms.go and a note in any relevant ops docs)."
+    },
+    {
+      "title": "Eliminate panics from shared Go libraries and return errors instead",
+      "kind": "Non-standard or antipatterns",
+      "files": [
+        "common/exec/exec.go",
+        "common/client/chunk/chunk.go"
+      ],
+      "short_description": "Several non\u2011test Go libraries panic on error instead of returning errors, which can crash services unexpectedly and makes error handling harder.\n\nActions (common/exec/exec.go):\n- Search for panic(...) calls in this file (e.g. in MustCommandOutput, WaitForPort, and any monitoring helpers).\n- Introduce non\u2011panic alternatives that return errors:\n  - For each Must* function used in production code, add a non\u2011Must version that returns (value, error) instead of panicking.\n  - Update production callers to use the non\u2011Must versions and handle errors appropriately (propagate up or log + return HTTP 500).\n- Restrict Must* helpers to test\u2011only if possible:\n  - If any Must* helper is used only in tests, move it into a _test.go file or clearly document it as a test helper.\n- Replace panics in WaitForPort and other runtime helpers with proper errors:\n  - e.g. change panic(\"health check on ... isn't responsive\") to return fmt.Errorf(\"health check on %s not responsive: %w\", host, err).\n\nActions (common/client/chunk/chunk.go):\n- Find the wrapping/encryption code where crypt.NewEncryptingReader(...) is called and panic(err) is used on failure.\n- Change this to propagate the error:\n  - Return nil, fmt.Errorf(\"failed to create encrypting reader: %w\", err) from the helper function.\n  - Ensure the top\u2011level API (e.g. File(...)) returns (chunks, error) and callers check the error.\n\nValidation:\n- Run go test ./... to ensure no behavior regressions.\n- Grep for panic( in non\u2011test files and confirm remaining panics are truly unrecoverable (e.g. in codegen tools) and documented as such.",
+      "recommended_action": ""
+    },
+    {
+      "title": "Harden streaming client: proper cancellation and token refresh strategy",
+      "kind": "Non-standard or antipatterns",
+      "files": [
+        "frontend/lib/streaming/client.ts",
+        "frontend/lib/api/client.ts",
+        "frontend/lib/logs/client.ts",
+        "frontend/app/projects/[project_id]/workloads/[workload_id]/workload-client.tsx"
+      ],
+      "short_description": "The frontend streaming client for logs and workload events does not use AbortController to cancel fetches and forces a token refresh (getIdToken(true)) on every call, which is wasteful and can cause reliability issues.\n\nActions (stream cancellation & cleanup):\n- In frontend/lib/streaming/client.ts:\n  - For each streaming request, create a new AbortController and pass controller.signal to fetch.\n  - Update cleanup logic so that when the consumer unsubscribes, you call controller.abort() and then close/cancel the reader.\n  - Ensure all paths (normal close, error, reconnection) correctly release resources and do not leave hanging connections.\n\nActions (token handling):\n- Introduce a getAuthToken helper that by default uses user.getIdToken() (no force refresh) instead of getIdToken(true).\n- Update streaming and API clients:\n  - In streaming/client.ts, api/client.ts, and logs/client.ts, switch to using the non\u2011force refresh token in the common helper.\n  - Implement a simple retry path for 401/unauthorized responses:\n    - On 401, call getIdToken(true) to force refresh once, then retry the request/stream once.\n\nActions (backoff/jitter):\n- In streaming/client.ts reconnection logic, add jitter to exponential backoff (e.g. random +/- 20\u201330% of base delay) to avoid synchronized reconnect storms.\n- Optionally add a max attempts or max cumulative retry time so the client eventually surfaces a terminal error state.\n\nIntegration:\n- Ensure frontend/lib/api/client.ts streaming wrappers (watchWorkload, watchProjectWorkloads, watchClusterTasks, watchWorkloadEvents, watchWorkloadCheckpoints) call the updated streaming client and correctly hook into the lifecycle callbacks.\n- In workload-client.tsx and any other components, verify that unsubscribe logic is still called on unmount and that React cleanup functions now trigger AbortController.abort().\n\nValidation:\n- Add small unit/integration tests for streaming/client.ts to verify:\n  - cleanup aborts the underlying fetch.\n  - 401 leads to a single forced token refresh and retry.\n- Run npm run typecheck and npm run lint in frontend/ to catch any TypeScript or ESLint regressions.",
+      "recommended_action": ""
+    },
+    {
+      "title": "Tighten Terraform version constraints and pin GitHub Actions to immutable SHAs",
+      "kind": "Security concerns",
+      "files": [
+        "terraform/platform/provider.tf",
+        "terraform/api/provider.tf",
+        "terraform/logs/provider.tf",
+        "terraform/frontend/provider.tf",
+        "terraform/backend/provider.tf",
+        ".github/workflows/terraform.yml",
+        ".github/workflows/lint-go.yml",
+        ".github/workflows/test.yml",
+        ".github/workflows/*.yml"
+      ],
+      "short_description": "Terraform modules currently use a very broad required_version (>= 1.0) and GitHub Actions are pinned only by major version (e.g. actions/checkout@v4), which increases upgrade risk and supply\u2011chain risk.\n\nActions (Terraform version constraints):\n- In each Terraform provider.tf (e.g. terraform/platform/provider.tf, terraform/api/provider.tf, terraform/logs/provider.tf, terraform/frontend/provider.tf, terraform/backend/provider.tf):\n  - Update required_version from \">= 1.0\" to a bounded range that reflects what you actually validate in CI, for example:\n    - required_version = \">= 1.8, < 2.0\" (adjust minimum per your CI image).\n  - Keep provider versions pinned as they are (google = \"6.45.0\", kubernetes = \"2.38.0\") or update in a separate, deliberate dependency upgrade if needed.\n- Optionally centralize provider blocks in shared modules if you find repetition:\n  - Extract a terraform/modules/providers or similar with common required_providers and reuse via module instantiation, to reduce drift across components.\n\nActions (GitHub Actions pinning):\n- For each workflow that uses third\u2011party actions (e.g. .github/workflows/terraform.yml, lint-go.yml, test.yml, docker.yml, etc.):\n  - Replace version tags like actions/checkout@v4, google-github-actions/auth@v2, hashicorp/setup-terraform@v3, golangci/golangci-lint-action@v8 with immutable commit SHAs.\n  - Example pattern:\n    - uses: actions/checkout@v4\n      -> uses: actions/checkout@<commit-sha>\n    - Keep the version tag as a comment for clarity, e.g. # v4.2.0.\n- Document a simple process to update these SHAs (e.g. use GitHub\u2019s suggested pinned revision when adding/upgrading actions).\n\nValidation:\n- Run Terraform plan for key modules (platform, api, frontend, logs) using the CI terraform workflow to ensure there are no version compatibility issues.\n- Re-run GitHub Actions in a test branch and confirm all workflows still succeed with pinned SHAs.",
+      "recommended_action": ""
+    },
+    {
+      "title": "Fix context misuse and secret handling in operator workload controller",
+      "kind": "Security concerns",
+      "files": [
+        "operator/controller/workload_controller.go"
+      ],
+      "short_description": "The Kubernetes operator workload controller currently discards caller context by creating a new context.Background() for API calls and creates Kubernetes Secrets that may hold access tokens/decryption keys without clear lifecycle or logging guarantees.\n\nActions (context propagation):\n- Locate updateWorkloadState in operator/controller/workload_controller.go.\n- Change its signature to accept a context.Context from the caller, or use a stored context from the workload state struct:\n  - Replace any ctx := context.Background() with a context passed into the function (e.g. ctx context.Context parameter) or state.ctx.\n- Update all call sites to pass the available context (e.g. the context from the Reconcile method), ensuring cancellation/timeouts and trace propagation are honored end\u2011to\u2011end.\n\nActions (secret handling):\n- Find the code that creates the Secret containing access_token and decryption_key (near the pod/job creation logic around the launcher).\n- Ensure no logs print the raw token or key values:\n  - Review log lines around this area and redact or remove any that might leak secret content.\n- Add annotations/labels to the Secret to document its purpose and, if applicable, expiry/rotation expectations.\n- Consider hardening the design:\n  - If possible, store an encrypted blob and decrypt inside the container using KMS, or use short\u2011lived tokens (e.g. SA tokens via projected volumes) instead of long\u2011lived access_token values.\n  - Add a TODO comment linking to a follow\u2011up design ticket if a deeper redesign is required.\n\nValidation:\n- Add or update unit tests in operator/controller/* to verify that:\n  - updateWorkloadState uses the provided context (can be checked with a context carrying a deadline or value).\n  - The Secret creation path no longer logs secret values.\n- Run go test ./operator/... and verify the operator still reconciles workloads correctly in a dev environment.",
+      "recommended_action": ""
+    },
+    {
+      "title": "Make Firebase client initialization lazy and SSR-safe",
+      "kind": "Non-standard or antipatterns",
+      "files": [
+        "frontend/lib/firebase/client.ts"
+      ],
+      "short_description": "The Firebase client currently parses NEXT_PUBLIC_FIREBASE_CONFIG_JSON and initializes Firebase at module import time, and throws if the env var is missing. This can break SSR, build, or tests when env vars are not available at import time.\n\n",
+      "recommended_action": "- In frontend/lib/firebase/client.ts:\n  - Refactor initialization so it is lazy and only runs when Firebase is actually needed.\n  - Wrap JSON.parse(process.env.NEXT_PUBLIC_FIREBASE_CONFIG_JSON) in a function that:\n    - Checks typeof window !== 'undefined' to ensure it is running in the browser.\n    - Throws or returns a clear error only when a component actually tries to use Firebase and the config is missing.\n  - Implement a singleton pattern to ensure initializeApp is called only once, caching the app and returning it on subsequent calls.\n- Export helper functions like getFirebaseApp(), getAuth(), getFirestore() that internally call the lazy initializer.\n- Update all callers of Firebase (auth context, any Firestore usage) to use these helpers instead of referencing initialization side effects.\n\nValidation:\n- Run npm run build to confirm no build\u2011time errors occur when env vars are configured only at runtime.\n- Add a small unit test (or simple runtime check) to ensure that importing client.ts without env vars does not throw until Firebase is actually used."
+    },
+    {
+      "title": "Remove global tracer and improve error wrapping in scheduler service",
+      "kind": "Non-standard or antipatterns",
+      "files": [
+        "scheduler/scheduler.go"
+      ],
+      "short_description": "The scheduler service uses a package\u2011level global tracer and sometimes wraps errors using %s, which discards the underlying cause. This is non\u2011idiomatic Go and hinders observability and error inspection.\n\n",
+      "recommended_action": "- In scheduler/scheduler.go:\n  - Replace the package\u2011level variable var tracer trace.Tracer with a dependency that is either:\n    - Initialized locally in Run() and passed into lower\u2011level functions, or\n    - Encapsulated in a small struct (e.g. type Scheduler struct { tracer trace.Tracer; ... }) passed where needed.\n  - Update functions that relied on the global tracer to accept a trace.Tracer parameter or a struct receiver.\n- Improve error wrapping:\n  - Locate error returns like return fmt.Errorf(\"failed to schedule workloads: %s\", err) and replace with fmt.Errorf(\"failed to schedule workloads: %w\", err).\n  - Do the same for any similar patterns in this file (grep for \"%s\", err) to ensure callers can use errors.Is / errors.As.\n\nValidation:\n- Run go test ./scheduler/... and ensure all tests pass.\n- If there are benchmarks or production traces, confirm that traces are still emitted correctly with the new tracer plumbing."
+    },
+    {
+      "title": "Standardize HTTP error responses via common/api helpers in auth middleware",
+      "kind": "Duplicate code",
+      "files": [
+        "common/middleware/auth.go",
+        "common/api/api.go"
+      ],
+      "short_description": "The auth middleware currently constructs some HTTP error responses manually (setting Content-Type, status code, and JSON body) instead of using the shared common/api helpers. This leads to duplicated logic and potential inconsistencies in error shape and logging.\n\n",
+      "recommended_action": "- In common/middleware/auth.go:\n  - Identify places where the middleware writes unauthorized or bad\u2011request responses manually, e.g.:\n    - w.Header().Set(\"Content-Type\", \"application/json\")\n    - w.WriteHeader(http.StatusUnauthorized)\n    - w.Write([]byte(`{\"error\":\"unauthorized\"}`))\n  - Import the common/api package: \"github.com/volary-ai/volary/common/api\".\n  - Replace manual writes with api.SendErrorResponse(w, r, api.WithHTTPCode(http.StatusUnauthorized, errors.New(\"unauthorized\"))) or the appropriate helper call for the specific error condition.\n- If other middlewares or handlers duplicate similar error patterns, standardize those too using common/api.\n\nValidation:\n- Update or add unit tests in common/middleware/auth_test.go to:\n  - Assert the HTTP status code remains correct.\n  - Confirm the error response body matches the common/api error format.\n- Run go test ./common/middleware/... to ensure no behavior regressions."
+    },
+    {
+      "title": "Refactor large workload client React component into smaller components and hooks",
+      "kind": "Spaghetti code",
+      "files": [
+        "frontend/app/projects/[project_id]/workloads/[workload_id]/workload-client.tsx",
+        "frontend/components/logs/* (new)",
+        "frontend/components/workload/* (new)"
+      ],
+      "short_description": "The workload client page component is very large and mixes complex streaming logic, state management, and UI rendering in a single file, making it hard to test, reason about, and modify.\n\n",
+      "recommended_action": "- Open frontend/app/projects/[project_id]/workloads/[workload_id]/workload-client.tsx and identify logical sections:\n  - Logs streaming and auto\u2011scroll logic.\n  - Workload metadata and header UI.\n  - Events list and additional resources.\n- Extract reusable components and hooks:\n  - Create a LogsViewer component under frontend/components/logs/logs-viewer.tsx that encapsulates:\n    - Logs streaming subscription and cleanup.\n    - Auto\u2011scroll and user\u2011scroll detection.\n    - Filter controls for labels or severity.\n  - Create lightweight presentational components for workload header and resource details under frontend/components/workload/ (e.g. header.tsx, resource-details.tsx, events-list.tsx).\n  - Move streaming subscription logic into custom hooks, e.g. useLogsStream, useWorkloadStream, useWorkloadEvents, that use the improved streaming client and expose {data, isLoading, error, reconnect}.\n- Update workload-client.tsx to:\n  - Compose these components and hooks instead of directly handling all logic.\n  - Keep the top\u2011level component responsible only for wiring props, routing parameters, and layout.\n\nAdditional small fix:\n- While refactoring, correct timer types in this file:\n  - Replace useRef<NodeJS.Timeout | null> with useRef<ReturnType<typeof setTimeout> | null> (or number | null) since this code runs in the browser.\n\nValidation:\n- Ensure the page still supports:\n  - Real\u2011time log streaming with auto\u2011scroll and manual scroll override.\n  - Real\u2011time events updates.\n- Add at least basic tests for the new hooks (where practical) and run npm run typecheck and npm run lint to confirm type safety and lint cleanliness."
+    },
+    {
+      "title": "Harden frontend error messages to avoid leaking backend internals",
+      "kind": "Security concerns",
+      "files": [
+        "frontend/lib/api/client.ts",
+        "frontend/lib/logs/client.ts",
+        "frontend/lib/streaming/client.ts"
+      ],
+      "short_description": "When HTTP responses are not ok, the frontend clients read the full response text and throw it in an Error. This can surface sensitive backend error details directly in the browser console or external telemetry.\n\n",
+      "recommended_action": "- In frontend/lib/api/client.ts and frontend/lib/logs/client.ts:\n  - Locate code paths where, on !response.ok, the client reads response.text() and uses it directly in the thrown Error message.\n  - Change this behavior to:\n    - Log the full response text only in development mode (NODE_ENV === 'development').\n    - For the Error visible to the app, use a high\u2011level message such as \"Request failed with status 500\" plus, at most, a truncated snippet of the response body (e.g. max 256\u2013512 chars) and never include obvious secrets.\n- In frontend/lib/streaming/client.ts:\n  - Ensure stream error handling follows a similar pattern: emit high\u2011level messages to the UI while detailed diagnostics are only accessible in development or internal logging.\n\nValidation:\n- Verify that existing UI error displays still show useful messages without exposing full backend stack traces or internal details.\n- Run npm run lint to ensure any new conditional logging passes ESLint rules."
+    },
+    {
+      "title": "Consolidate navigation \"last visited\" helpers and guard against SSR issues",
+      "kind": "Duplicate code",
+      "files": [
+        "frontend/lib/navigation/last-visited.ts"
+      ],
+      "short_description": "The navigation helpers for remembering the last visited organization/project/workload have duplicated logic and access localStorage/sessionStorage without guarding for server\u2011side rendering, which can cause runtime errors if called in a non\u2011browser context.\n\n",
+      "recommended_action": "- In frontend/lib/navigation/last-visited.ts:\n  - Identify the separate functions for last visited org, project, workload, etc. that perform similar storage operations.\n  - Introduce a small internal helper, e.g. setLastVisited(type, id, projectId?), that:\n    - Checks typeof window !== 'undefined' before accessing storage; if false, it becomes a no\u2011op.\n    - Encapsulates the shared setItem/removeItem logic.\n  - Refactor the public functions (setLastVisitedOrg, setLastVisitedProject, setLastVisitedWorkload, etc.) to call this helper instead of duplicating logic.\n  - Apply a similar pattern for getters, with SSR guards, returning null or sensible defaults when window is not available.\n\nValidation:\n- Run npm run typecheck to ensure the types are still correct.\n- Manually verify that navigation state persists within the browser session as before, and that importing these helpers in non\u2011browser contexts (such as tests) no longer throws."
+    },
+    {
+      "title": "Implement reconnection filtering for workload checkpoints streaming (address TODO)",
+      "kind": "Non-standard or antipatterns",
+      "files": [
+        "frontend/lib/api/client.ts"
+      ],
+      "short_description": "There is an explicit TODO in the API client to support reconnection filtering for workload checkpoints, so that reconnects don\u2019t re\u2011stream all historical checkpoints. Leaving this unimplemented increases bandwidth and client\u2011side processing on reconnects.\n\n",
+      "recommended_action": "- Open frontend/lib/api/client.ts and locate watchWorkloadCheckpoints (near the existing TODO about reconnection filtering).\n- Design and implement a reconnection filter similar to other streaming APIs in this file:\n  - Track the timestamp or sequence (e.g. last_updated or created) of the last received checkpoint on the client side.\n  - Use getDynamicQueryParams or equivalent to pass a query parameter (e.g. since=ISO8601 timestamp) when re\u2011establishing the stream.\n  - Ensure the backend already supports such filtering; if not, add a small follow\u2011up backend ticket to extend the endpoint.\n- Update the TODO comment to be removed or replaced with a brief explanation of the implemented behavior.\n\nValidation:\n- Test in a dev environment by:\n  - Starting a workload with checkpoints, then simulating network drop and reconnection.\n  - Verifying that on reconnect, only new checkpoints after the last seen timestamp are delivered.\n- Run npm run typecheck and npm run lint to ensure the changes integrate cleanly."
+    }
+  ]
+}

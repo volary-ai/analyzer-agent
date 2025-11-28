@@ -1,0 +1,109 @@
+{
+  "issues": [
+    {
+      "title": "Centralise JSON error responses (panic + 404) on common helpers",
+      "kind": "Duplicate code",
+      "files": [
+        "common/api/api.go",
+        "common/api/types",
+        "common/middleware/panic.go",
+        "api/api.go",
+        "logs/logs.go",
+        "backend/backend.go"
+      ],
+      "short_description": "Multiple services manually construct JSON error responses, which risks inconsistent formats and headers and duplicates logic already provided by `common/api`.\n\nAction plan:\n1. Introduce or reuse a small helper in `common/api/api.go` that wraps `SendErrorResponse` for simple cases, e.g.\n   - `func WriteSimpleError(w http.ResponseWriter, r *http.Request, status int, msg string)` that constructs a `types.ErrorResponse` and calls `SendErrorResponse`.\n   - Or call `SendErrorResponse` directly at call sites by constructing `types.ErrorResponse`.\n2. Update panic middleware:\n   - In `common/middleware/panic.go`, inside `ServeHTTP`, replace:\n     - `w.Header().Set(\"Content-Type\", \"application/json\")`\n     - `w.WriteHeader(http.StatusInternalServerError)`\n     - `w.Write([]byte(`{\"error\":\"internal error\"}`))`\n   - With a call to the new helper or `SendErrorResponse(w, r, &types.ErrorResponse{Err: \"internal error\"})`.\n3. Update not-found handlers to use the same helper/type:\n   - `api/api.go:notFound` and `logs/logs.go:notFound` (and `backend/backend.go:notFound` if still used): replace manual header + `w.Write([]byte(`{\"error\":\"not found\"}`))` with `SendErrorResponse(w, r, &types.ErrorResponse{Err: \"not found\"})` (or via the helper).\n4. Add/adjust tests:\n   - Extend existing HTTP handler tests (e.g. in `common/api/api_test.go` or service-specific tests) to assert that 404 and panic responses use the standard `ErrorResponse` JSON structure and `Content-Type: application/json`.\n\nThis reduces duplication and guarantees a single place to change error JSON shape or headers in future.",
+      "recommended_action": ""
+    },
+    {
+      "title": "Refactor auth middleware error handling to use shared error types and simplify control flow",
+      "kind": "Spaghetti code",
+      "files": [
+        "common/middleware/auth.go",
+        "common/middleware/auth_test.go",
+        "common/api/api.go",
+        "common/api/types"
+      ],
+      "short_description": "`common/middleware/auth.go` implements authentication and impersonation with several inline JSON responses and branching paths, making it harder to test and slightly inconsistent with API error handling.\n\nAction plan:\n1. Replace inline JSON error responses with shared error helpers:\n   - In `ServeHTTP`, for `principal == nil` and error paths from `checkForImpersonation`, replace manual:\n     - `w.Header().Set(\"Content-Type\", \"application/json\")`\n     - `w.WriteHeader(...)`\n     - `w.Write([]byte(...))` or `json.NewEncoder(w).Encode(...)`\n   - With calls to `common/api.SendErrorResponse` using `types.ErrorResponse` (e.g. `Err: \"unauthorized\"` or the bad-request message) and appropriate status codes.\n   - Ensure all branches use the same `ErrorResponse` schema as the rest of the API.\n2. Extract smaller helpers from `ServeHTTP` to reduce nesting and improve testability:\n   - Factor out functions along these lines:\n     - `func (a *authHandler) isUnauthenticatedRoute(route string) bool`\n     - `func (a *authHandler) writeUnauthorized(w http.ResponseWriter, r *http.Request)`\n     - `func (a *authHandler) handleImpersonationError(w http.ResponseWriter, r *http.Request, err error)`\n   - Keep `ServeHTTP` focused on the high-level flow: check unauthenticated list \u2192 parse principal \u2192 check impersonation \u2192 set context and call next handler.\n3. Add/update tests:\n   - In `common/middleware/auth_test.go`, add table tests for:\n     - Unauthenticated routes: pass through without auth or error.\n     - Missing/invalid token \u2192 401 with standard error JSON.\n     - Impersonation errors (`errBadRequest`, `errUnauthorized`, and unexpected errors) \u2192 appropriate status and error body.\n   - Assert that no branch writes ad-hoc JSON that diverges from `ErrorResponse`.\n\nThis keeps response formats consistent across the stack and makes the auth middleware easier to reason about and extend.",
+      "recommended_action": ""
+    },
+    {
+      "title": "Decompose operator Workload controller logic and remove hard-coded failure thresholds",
+      "kind": "Spaghetti code",
+      "files": [
+        "operator/controller/workload_controller.go",
+        "cmd/operator/main.go"
+      ],
+      "short_description": "`operator/controller/workload_controller.go` contains a large reconciliation pipeline (`WorkloadReconciler.Reconcile` and `workloadState.Reconcile`) plus hard-coded failure thresholds, including a special case for a specific test image. This makes the controller harder to test and evolves runtime policy in code instead of configuration.\n\nAction plan:\n1. Extract policy constants into configuration:\n   - Replace `failureWindowDuration` and `failureThreshold` constants, and the special-cased image override in `isOverFailureThreshold`, with fields on `WorkloadReconciler` or a dedicated config struct (e.g. `type FailurePolicy struct { Window time.Duration; Threshold int; TestImageThresholdOverride map[string]int }`).\n   - Wire these from flags / env or a small config struct created in the operator `main` (in `cmd/operator`), defaulting to the current hard-coded values.\n   - Keep the test-only image (`europe-docker.pkg.dev/volary-global/volary-private/test:latest`) out of production logic where possible (e.g. via a config entry used only in test deployments).\n2. Break up `workloadState.Reconcile` into smaller, testable methods:\n   - The method currently performs: deletion handling, finalizer management, service creation, pod count updates, status transitions (starting/running/terminal), pod creation, pod restarts, and failure-threshold evaluation.\n   - Extract helpers such as:\n     - `func (s *workloadState) handleDeletion() (ctrl.Result, bool, error)`\n     - `func (s *workloadState) ensureFinalizer() (bool, error)`\n     - `func (s *workloadState) ensureCoordinatorService() error` (already a method, ensure clear responsibility)\n     - `func (s *workloadState) updateStatusFromPods() (ctrl.Result, bool, error)`\n     - `func (s *workloadState) reconcilePods() error` (ensuring pods and requesting restarts)\n     - `func (s *workloadState) applyFailurePolicy(now time.Time) (ctrl.Result, bool)`\n   - Rewire `Reconcile` to be a simple orchestration that calls these helpers in order and returns early when a helper indicates a requeue or completion.\n3. Improve unit tests:\n   - Add focused tests for `isOverFailureThreshold` (or its replacement), passing different failure timestamp sets and thresholds.\n   - Add tests for `handleTermination`, `ensureFinalizer`, and `reconcilePods` using fake `WorkloadInterface` and `PodInterface` clients (from client-go) to avoid full integration tests.\n\nThis will make the operator more maintainable, allow evolving policies without code changes, and reduce the chance of regressions when changing workload lifecycle rules.",
+      "recommended_action": ""
+    },
+    {
+      "title": "Improve scheduler + MaxSATSolver testability by extracting solver interfaces and pure helpers",
+      "kind": "Spaghetti code",
+      "files": [
+        "scheduler/scheduler.go",
+        "scheduler/solver/algorithm.go",
+        "scheduler/solver/algorithm_test.go",
+        "scheduler/scheduler_test.go"
+      ],
+      "short_description": "The scheduling path (`scheduler/scheduler.go` plus `scheduler/solver/algorithm.go`) constructs a relatively complex MaxSAT problem, runs an external solver, and converts the solution back into workload/cluster assignments. Most of this is done in large, stateful methods (`MaxSATSolver.Schedule`, `maxSATSolverState.Solve`, and `schedule`), which are tightly coupled to the underlying solver library and hard to unit-test in isolation.\n\nAction plan:\n1. Introduce a narrow solver interface:\n   - In `scheduler/solver`, define an interface like:\n     ```go\n     type MaxSATBackend interface {\n         Solve(constraints []maxsat.Constr) (solution map[string]bool, cost int, err error)\n     }\n     ```\n   - Wrap the current `maxsat.New(...).Solve()` calls in a concrete implementation that satisfies this interface.\n   - Change `maxSATSolverState.Solve` to depend on `MaxSATBackend` (passed in or stored on `MaxSATSolver`) rather than directly calling `maxsat.New`.\n2. Separate problem construction from solving:\n   - Factor `MaxSATSolver.Schedule` into:\n     - `buildState(workloads []*model.Workload, clusters []*ClusterTasks) maxSATSolverState`, which populates `variables`, `constraints`, and `assignmentVariables`.\n     - `runSolver(backend MaxSATBackend, state *maxSATSolverState) []Result`, which just calls the backend and turns the raw model back into `[]Result`.\n   - Keep `schedule` in `scheduler/scheduler.go` responsible only for:\n     - Fetching workloads / clusters / tasks from the `Store`.\n     - Building `ClusterTasks` from tasks.\n     - Invoking `Scheduler.Schedule` and translating `Result`s into store updates.\n3. Add unit tests around the extracted pieces:\n   - In `scheduler/solver/algorithm_test.go`, create a fake `MaxSATBackend` that returns controlled solutions and verify that `runSolver` produces expected `Result` objects for simple inputs.\n   - In `scheduler/scheduler_test.go`, use a fake `Store` + fake `Scheduler` (or the real one with a fake backend) to test `schedule` and `scheduleAll` for:\n     - Unschedulable workloads marked correctly.\n     - Deschedule/reschedule path when `Result.Task` is non-nil.\n   - Ensure debug behavior (logging of constraints, variables) is covered by at least one test path.\n4. (Optional follow-up) Address TODOs in solver to make future behavior clearer:\n   - `TODO(peter): think about what happens for other task types` and\n   - `TODO(peter): Some refactoring is needed to think more about tasks and less about workloads.`\n   - Once the interfaces are in place, consider extending `assignment` and related logic to support task types beyond simple `WorkloadRef`, with tests for those cases.\n\nThis refactor keeps the powerful solver-based design but makes it significantly easier to test and evolve without risking regressions in complex scheduling behaviour.",
+      "recommended_action": ""
+    },
+    {
+      "title": "Manage long-lived forked dependencies in go.mod (go-flags, fsnotify, firestore)",
+      "kind": "Non-standard or antipatterns",
+      "files": [
+        "go.mod",
+        "CLAUDE.md",
+        "common/flags",
+        "common/store",
+        "common/client"
+      ],
+      "short_description": "`go.mod` uses `replace` directives to point at forked or private versions of upstream libraries:\n- `github.com/jessevdk/go-flags` \u2192 `github.com/peterebden/go-flags` (with a comment referencing PR #422).\n- `github.com/fsnotify/fsnotify` \u2192 `github.com/peterebden/fsnotify`.\n- `cloud.google.com/go/firestore` \u2192 `github.com/tatskaari/google-cloud-go/firestore` (with a comment referencing a Google Cloud Go PR).\n\nThese forks are valuable short-term, but over time they:\n- Diverge from upstream bugfixes and security patches.\n- Make dependency management and audits harder.\n- Risk breaking if the fork is unpublished or altered.\n\nAction plan:\n1. Document each fork clearly:\n   - In `go.mod` comments and/or a small section in `CLAUDE.md` or `docs/`, list:\n     - Why each fork exists (link to the upstream PR/issue).\n     - Which behavior depends on the fork (e.g. specific bugfix or feature).\n2. Add guardrails for tracking upstream status:\n   - Create a small script (e.g. `tools/check-forks.sh`) that:\n     - Checks the status of each referenced upstream PR (via the GitHub API or just by `git ls-remote`/curling the PR page) and prints whether it\u2019s merged/closed.\n   - Optionally wire this into CI (e.g. a weekly GitHub Action) that logs when an upstream PR is merged so the fork can be removed.\n3. Isolate usage of fork-specific behaviour where possible:\n   - Search for call-sites that rely on new or changed behaviour in the forks (e.g. in auth/flags handling or fsnotify edge cases).\n   - Wrap those in small, well-documented helpers (e.g. `common/flags`, `common/store/firestore`) so that reverting to upstream only requires changes in a few places.\n4. Plan de-forking work:\n   - For each fork, create a follow-up ticket to:\n     - Re-test functionality against upstream when the PR is merged.\n     - Remove the `replace` directive and bump to the upstream version.\n     - Run `go test ./...` and `golangci-lint` to ensure no regressions.\n\nThis doesn\u2019t require immediate code changes but ensures the team doesn\u2019t get stuck permanently on private forks that are easy to forget about.",
+      "recommended_action": ""
+    },
+    {
+      "title": "Tidy generated WorkloadExpansion stub or add rationale to avoid confusion",
+      "kind": "Dead code",
+      "files": [
+        "operator/api/v1alpha1/internalclientset/typed/api/v1alpha1/generated_expansion.go",
+        "operator/Makefile"
+      ],
+      "short_description": "`operator/api/v1alpha1/internalclientset/typed/api/v1alpha1/generated_expansion.go` contains only an empty exported interface `WorkloadExpansion`, auto-generated by `client-gen`. While harmless, it appears as dead code and may confuse contributors who expect it to be used.\n\nAction plan:\n1. Confirm whether `client-gen` requires this file to exist for future custom expansions.\n   - If it must exist, add a brief comment explaining that it is an extension hook and is expected to remain empty unless client extensions are needed.\n     - E.g. update the comment block to say: `// WorkloadExpansion is a hook for custom client methods. It is expected to remain empty unless we add manual expansions.`\n2. If it is not required by the generator and not referenced anywhere:\n   - Remove the file and re-run `make codegen` / `operator` codegen to verify it is not re-created.\n   - Ensure `go test ./operator/...` still passes.\n\nEither way, the goal is to make it explicit to future readers whether this is intentional extension scaffolding or removable dead code.",
+      "recommended_action": ""
+    },
+    {
+      "title": "Reduce overly-broad IAM roles in Terraform (use least-privilege instead of roles/owner)",
+      "kind": "Security concerns",
+      "files": [
+        "terraform/platform/main.tf",
+        "terraform/platform/variables.tf",
+        "terraform/modules/ci",
+        "CLAUDE.md"
+      ],
+      "short_description": "`terraform/platform/main.tf` grants `roles/owner` to groups via `google_project_iam_member.owner_groups`. This is convenient but significantly broader than necessary and can violate least-privilege best practices. There is also a `roles/viewer` binding for `viewer_groups` which is more acceptable but may still be broader than required in some cases.\n\nAction plan:\n1. Identify actual permission needs for owner groups:\n   - Work with platform stakeholders to list what these owner groups actually need to do (e.g. manage GKE clusters, KMS keys, IAM, billing, etc.).\n2. Replace `roles/owner` with a set of narrower roles or a custom role:\n   - Either grant a small set of standard roles (e.g. `roles/container.admin`, `roles/compute.admin`, `roles/iam.securityAdmin`, etc.) or\n   - Define one or more `google_project_iam_custom_role` resources that include only the required permissions, and bind those roles instead.\n3. Make the roles configurable:\n   - Introduce Terraform variables like `owner_roles` and `viewer_roles` with sensible defaults, and use those instead of hard-coded `roles/owner` and `roles/viewer` where appropriate.\n4. Roll out safely:\n   - Apply changes in a lower environment first (e.g. dev) to confirm that workflows (deployments, CI/CD, manual interventions) still function.\n   - Then roll to staging and production with appropriate change management.\n\nThis is a medium-effort but high-value security improvement that reduces blast radius if a group account is compromised.",
+      "recommended_action": ""
+    },
+    {
+      "title": "Implement checkpoint stream reconnection filtering by last updated timestamp",
+      "kind": "Non-standard or antipatterns",
+      "files": [
+        "frontend/lib/api/client.ts",
+        "frontend/lib/logs/client.ts",
+        "frontend/openapi.yaml"
+      ],
+      "short_description": "The frontend workload checkpoint streaming client has a TODO indicating that reconnections should filter by last updated timestamp to avoid replaying old checkpoints. Currently, `watchWorkloadCheckpoints` in `frontend/lib/api/client.ts` does not track the last received item, so reconnects may fetch duplicate data or require server-side de-duplication.\n\nAction plan:\n1. Track the latest checkpoint timestamp or version locally:\n   - In `watchWorkloadCheckpoints`, maintain a `lastUpdated` variable (e.g. string or `Date`) updated on each received checkpoint.\n2. Extend the streaming client query parameters on reconnect:\n   - Adapt the `streamingClient.watchStream` call to accept a `getDynamicQueryParams` callback (similar to how workload events do it) or add logic to include `after=<lastUpdated>` when `lastUpdated` is set.\n   - Coordinate with the backend API (if not already supported) to ensure the `/v0/projects/{projectId}/checkpoints` endpoint honours an `after` or equivalent parameter for incremental streaming.\n3. Update `onCheckpoint` invocation:\n   - Ensure that the reconnection path only emits checkpoints with timestamps strictly greater than `lastUpdated`, using either server-side filtering or simple client-side filtering before invoking `onCheckpoint`.\n4. Add tests:\n   - Add unit tests or integration tests in `frontend/lib` that simulate a disconnect, then reconnect with `lastUpdated` set, and verify that only new checkpoints are delivered.\n\nThis makes long-lived log/checkpoint viewing sessions more efficient and avoids confusing users with duplicate checkpoint entries after reconnects.",
+      "recommended_action": ""
+    },
+    {
+      "title": "Reintroduce a fast Go test job in CI separate from vol-tests harness",
+      "kind": "Build and lint warnings",
+      "files": [
+        ".github/workflows/test.yml",
+        ".github/actions/setup-go-cache/action.yml",
+        "Makefile"
+      ],
+      "short_description": "`.github/workflows/test.yml` has a full-featured `vol-tests` job that uses `cmd/run_tests/vol_up.sh` and external infrastructure. A simpler Go test job (using `go test ./...` with emulators) is present but commented out. Relying only on the heavy `vol-tests` job can slow feedback and make it harder to see basic unit-test failures in isolation.\n\nAction plan:\n1. Restore a lightweight Go test job:\n   - Uncomment or reintroduce a job similar to the commented `run-tests` block, but simplify as needed:\n     - Set up Java (for Firestore emulator), Go, and Node as required.\n     - Build test dependencies (`make test_deps`) if still relevant.\n     - Run `go test -v ./...` (or `go tool richgo test -v ./...` to match local usage).\n2. Scope triggers appropriately:\n   - Keep the existing path filters (api, cmd, common, files, logs, scheduler, operator, sdk, `volary.yaml`, `go.mod`) so the job only runs when backend code changes.\n   - Optionally run this job on every PR, and reserve `vol-tests` for a subset (e.g. main branch or a nightly workflow) if runtime is high.\n3. Ensure caching is used:\n   - Reuse `.github/actions/setup-go-cache` or the existing `actions/cache@v4` configuration to keep test runtimes low.\n4. Update documentation:\n   - Note in `CLAUDE.md` or contributing docs that PRs are expected to pass both the fast unit-test job and (where applicable) the `vol-tests` job.\n\nThis improves developer feedback loops and makes it easier to distinguish basic test failures from environment- or infra-related issues in the heavier test pipeline.",
+      "recommended_action": ""
+    }
+  ]
+}
