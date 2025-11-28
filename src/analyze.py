@@ -4,7 +4,7 @@ from pathlib import Path
 from rich.table import Table
 
 from .agent import Agent, APIKeyMissingError, console, print_combined_usage
-from .prompts import COORDINATOR_PROMPT, START_ANALYSIS_PROMPT
+from .prompts import TECH_DEBT_COORDINATOR_PROMPT, START_TECH_DEBT_ANALYSIS_PROMPT
 from .output_schemas import TechDebtAnalysis
 from .tools import delegate_task_to_agent, grep, ls, read_file
 
@@ -44,7 +44,7 @@ def analyze(
     tools = [ls, read_file, grep]
 
     delegate_agent = Agent(
-        instruction=COORDINATOR_PROMPT,
+        instruction=TECH_DEBT_COORDINATOR_PROMPT,
         tools=tools,
         model=delegate_model,
         endpoint=completions_endpoint,
@@ -53,7 +53,7 @@ def analyze(
     )
 
     coordinator_agent = Agent(
-        instruction=COORDINATOR_PROMPT,
+        instruction=TECH_DEBT_COORDINATOR_PROMPT,
         tools=tools + [delegate_task_to_agent(delegate_agent, repo_context)],
         model=coordinator_model,
         endpoint=completions_endpoint,
@@ -62,7 +62,7 @@ def analyze(
     )
 
     try:
-        analysis_prompt = START_ANALYSIS_PROMPT.format(status=repo_context)
+        analysis_prompt = START_TECH_DEBT_ANALYSIS_PROMPT.format(status=repo_context)
         analysis = coordinator_agent.run(
             prompt=analysis_prompt,
             output_class=TechDebtAnalysis,

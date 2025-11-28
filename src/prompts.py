@@ -12,7 +12,7 @@ Modifying TECH_DEBT_PROMPT:
 - Each issue should have: title, description, optional kind, optional files list
 """
 
-START_ANALYSIS_PROMPT = """
+START_TECH_DEBT_ANALYSIS_PROMPT = """
 We are tasked with identifying areas of tech debt within this repository. We should try and produce an actionable list of the most pertinent
 issues. These will be used to raise tickets in a ticketing system like Jira that people should work on, so should be well-defined enough for a
 junior member of the team to pick up.
@@ -58,14 +58,14 @@ You should avoid naming anybody in particular, embracing a no blame attitude.
 {status}
 """
 
-DELEGATED_TASK_PROMPT = """
+TECH_DEBT_DELEGATED_TASK_PROMPT = """
 You have been delegated the following task in helping identifying key areas of technical debt in this repository:
 {task}
 
 {status}
 """
 
-COORDINATOR_PROMPT = """
+TECH_DEBT_COORDINATOR_PROMPT = """
 You help identify areas of technical within a repository. Some key areas to consider:
 
 # Out of date libraries or frameworks

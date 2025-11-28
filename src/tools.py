@@ -6,7 +6,7 @@ from pathlib import Path
 import pathspec
 
 from .agent import Agent
-from .prompts import DELEGATED_TASK_PROMPT
+from .prompts import TECH_DEBT_DELEGATED_TASK_PROMPT
 
 
 def ls(glob: str) -> list[str]:
@@ -199,7 +199,7 @@ def delegate_task_to_agent(delegee: Agent, repo_context: str) -> Callable:
         :return: The result of the complex step in analysing the repo.
         """
 
-        prompt = DELEGATED_TASK_PROMPT.format(task=description, status=repo_context)
+        prompt = TECH_DEBT_DELEGATED_TASK_PROMPT.format(task=description, status=repo_context)
         return delegee.run(task=task, prompt=prompt)
 
     return delegate_task
