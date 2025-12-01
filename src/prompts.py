@@ -53,7 +53,7 @@ enables you to focus on the broader picture.
 
 You should avoid issues that can't be actioned now:
 <bad-response>
-1. Remove pytest once migration to unittest is complete 
+1. Remove pytest once migration to unittest is complete
 </bad-response>
 
 {status}
