@@ -38,6 +38,11 @@ class MaxIterationsReachedError(AgentError):
 class EmptyResponseError(AgentError):
     """Raised when the agent returns an empty response."""
 
+class BadFinishReason(AgentError):
+    """Raised when the agent reaches a bad finish reason."""
+    def __init__(self, reason: str):
+        super().__init__(f"Agent completed with unexpected finish reason: {reason}")
+        self.reason = reason
 
 # This is a virtual function all agents have access to, to keep the user updated
 def update_user(msg: str) -> None:
@@ -343,7 +348,6 @@ class Agent:
         response_format = None
         if output_schema:
             response_format = {"type": "json_schema", "json_schema": output_schema}
-        empty_retries = self.max_retries_on_empty
         # Call the agent in a loop until the finish reason isn't a tool call.
         for iteration in range(self.max_iterations):
             if self.todos:
@@ -387,42 +391,30 @@ class Agent:
             finish_reason = first_choice.get("finish_reason")
             tool_calls = assistant_message.get("tool_calls")
 
-            if not tool_calls or finish_reason != "tool_calls":
+            if finish_reason == "stop":
                 # No more tool calling to do. Return the response.
                 content = assistant_message.get("content", "")
                 if not content:
-                    if empty_retries > 0:
-                        console.print(
-                            f"\n[dim yellow]ERROR: LLM finished without producing requested content. Retrying ({empty_retries} retries remaining)...[/dim yellow]"
-                        )
-                        empty_retries -= 1
-                        # Add a user message prompting the LLM to try again
-                        self.messages.append(
-                            {
-                                "role": "user",
-                                "content": "Please provide the requested output in the specified format. You did not produce any output in your last response.",
-                            }
-                        )
-                        continue
-
                     raise EmptyResponseError(
                         f"Agent completed but returned an empty response. "
                         f"Finish reason: {finish_reason}, Iterations: {iteration + 1}"
                     )
 
                 return content
+            elif finish_reason == "tool_calls":
+                # Print reasoning if present (from extended thinking models)
+                reasoning = assistant_message.get("reasoning")
+                if reasoning:
+                    console.print("\n[dim cyan]Reasoning:[/dim cyan]")
+                    console.print(f"[dim italic]{escape(reasoning)}[/dim italic]")
 
-            # Print reasoning if present (from extended thinking models)
-            reasoning = assistant_message.get("reasoning")
-            if reasoning:
-                console.print("\n[dim cyan]Reasoning:[/dim cyan]")
-                console.print(f"[dim italic]{escape(reasoning)}[/dim italic]")
+                if assistant_message.get("content"):
+                    console.print(f"\n[bold white]{escape(assistant_message['content'])}[/bold white]")
 
-            if assistant_message.get("content"):
-                console.print(f"\n[bold white]{escape(assistant_message['content'])}[/bold white]")
-
-            self._call_tools(tool_calls)
-
+                self._call_tools(tool_calls)
+            else:
+                # Probably the error or legnth reasons
+                raise BadFinishReason(finish_reason)
         # Reached max iterations without completing
         console.print(f"\n[dim]Reached maximum iterations ({self.max_iterations})[/dim]")
         last_message = self.messages[-1] if self.messages else None
