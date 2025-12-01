@@ -45,7 +45,7 @@ def analyze(
     return analysis
 
 
-def get_repo_context() -> str:
+def get_repo_context(readme_md: str="README.md", claude_md:str="CLAUDE.md") -> str:
     """
     Gather context about the repository structure and documentation.
     Returns a formatted string with repo overview information.
@@ -66,10 +66,10 @@ def get_repo_context() -> str:
         pass
 
     # Try to read README.md
-    readme_path = Path("README.md")
+    readme_path = Path(readme_md)
     if readme_path.exists():
         try:
-            readme_content = read_file("README.md")
+            readme_content = read_file(readme_md)
             context_parts += [
                 "\n## README.md",
                 "```markdown",
@@ -80,10 +80,10 @@ def get_repo_context() -> str:
             pass
 
     # Try to read CLAUDE.md
-    claude_md_path = Path("CLAUDE.md")
+    claude_md_path = Path(claude_md)
     if claude_md_path.exists():
         try:
-            claude_content = read_file("CLAUDE.md")
+            claude_content = read_file(claude_md)
             context_parts += [
                 "\n## CLAUDE.md (Project Instructions)",
                 "```markdown",
