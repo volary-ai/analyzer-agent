@@ -81,9 +81,9 @@ def write_summary_markdown(summary_output: str, analysis: EvaluatedTechDebtAnaly
     rows = []
     for issue in analysis.issues:
         row = {
-            "Title": issue.title,
-            "Description": issue.short_description,
-            "Action": issue.recommended_action,
+            "Title": _escape_newlines(issue.title),
+            "Description": _escape_newlines(issue.short_description),
+            "Action": _escape_newlines(issue.recommended_action),
         }
         files_display = "\n".join(issue.files) if issue.files else "-"
 
@@ -91,13 +91,17 @@ def write_summary_markdown(summary_output: str, analysis: EvaluatedTechDebtAnaly
             # Format evaluation criteria
             eval_data = issue.evaluation.model_dump()
             eval_display = "\n".join(f"{_format_eval_key(k)}: {_format_eval_value(k, v)}" for k, v in eval_data.items())
-            row["Evaluation"] = eval_display
+            row["Evaluation"] = _escape_newlines(eval_display)
 
-        row["Files"] = files_display
+        row["Files"] = _escape_newlines(files_display)
         rows.append(row)
 
     with open(summary_output, "a") as file:
         file.write(markdown_table(rows).get_markdown())
+
+
+def _escape_newlines(str: str) -> str:
+    return str.replace("\n", "<br>")
 
 
 def _format_eval_key(key: str) -> str:
