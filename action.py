@@ -7,6 +7,8 @@ import os
 import sys
 from typing import Any
 
+from py_markdown_table.markdown_table import markdown_table
+
 from src.analyze import analyze
 from src.completion_api import CompletionApi
 from src.eval import eval
@@ -73,36 +75,29 @@ def main() -> int:
 
 
 def write_summary_markdown(summary_output: str, analysis: EvaluatedTechDebtAnalysis):
-    with open(summary_output, "a") as file:
-        heading = "| Title | Description | Action |"
-        border = "| --- | --- | --- |"
+    # Check if this is evaluated analysis by checking if first issue has evaluation
+    has_evaluation = isinstance(analysis, EvaluatedTechDebtAnalysis)
 
-        # Check if this is evaluated analysis by checking if first issue has evaluation
-        has_evaluation = isinstance(analysis, EvaluatedTechDebtAnalysis)
+    rows = []
+    for issue in analysis.issues:
+        row = {
+            "Title": issue.title,
+            "Description": issue.short_description,
+            "Action": issue.recommended_action,
+        }
+        files_display = "\n".join(issue.files) if issue.files else "-"
+
         if has_evaluation:
-            heading += " Evaluation |"
-            border += " --- |"
+            # Format evaluation criteria
+            eval_data = issue.evaluation.model_dump()
+            eval_display = "\n".join(f"{_format_eval_key(k)}: {_format_eval_value(k, v)}" for k, v in eval_data.items())
+            row["Evaluation"] = eval_display
 
-        heading += " Files |"
-        border += " --- |"
+        row["Files"] = files_display
+        rows.append(row)
 
-        file.write(heading)
-
-        for issue in analysis.issues:
-            # Format files list
-            files_display = "\n".join(issue.files) if issue.files else "-"
-
-            line = f"| {issue.title} | {issue.short_description} | {issue.recommended_action} |"
-
-            if has_evaluation:
-                # Format evaluation criteria
-                eval_data = issue.evaluation.model_dump()
-                eval_display = "\n".join(
-                    f"{_format_eval_key(k)}: {_format_eval_value(k, v)}" for k, v in eval_data.items()
-                )
-                line += f" {eval_display} |"
-
-            line += f" {files_display} |"
+    with open(summary_output, "a") as file:
+        file.write(markdown_table(rows).get_markdown())
 
 
 def _format_eval_key(key: str) -> str:
