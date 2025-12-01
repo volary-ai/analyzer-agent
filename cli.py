@@ -5,6 +5,7 @@ import os
 import sys
 from enum import Enum
 
+from pydantic import ValidationError
 from rich.console import Console
 
 from src.analyze import analyze
@@ -99,7 +100,11 @@ def main() -> int:
             print(evaluated_analysis.model_dump_json(indent=2))
             api.print_usage_summary()
         case "print":
-            analysis = EvaluatedTechDebtAnalysis.model_validate_json(sys.stdin.read())
+            raw = sys.stdin.read()
+            try:
+                analysis = EvaluatedTechDebtAnalysis.model_validate_json(raw)
+            except ValidationError:
+                analysis = TechDebtAnalysis.model_validate_json(raw)
             print_issues(analysis)
     return 0
 
