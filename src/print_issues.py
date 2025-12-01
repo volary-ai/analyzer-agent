@@ -44,7 +44,7 @@ def _format_eval_value(key: str, value: Any) -> str:
     return str(value)
 
 
-def print_issues(analysis: TechDebtAnalysis | EvaluatedTechDebtAnalysis) -> int:
+def print_issues(analysis: TechDebtAnalysis | EvaluatedTechDebtAnalysis, *, width: int | None = None):
     """Print tech debt issues in a formatted table.
 
     Args:
@@ -53,7 +53,7 @@ def print_issues(analysis: TechDebtAnalysis | EvaluatedTechDebtAnalysis) -> int:
     Returns:
         Exit code (0 for success)
     """
-    table = Table(show_header=True, header_style="bold magenta")
+    table = Table(show_header=True, header_style="bold magenta", width=width)
     table.add_column("Title", style="cyan bold", width=30, no_wrap=False)
     table.add_column("Description", style="white", width=40, no_wrap=False)
     table.add_column("Action", style="green", width=35, no_wrap=False)
@@ -90,7 +90,6 @@ def print_issues(analysis: TechDebtAnalysis | EvaluatedTechDebtAnalysis) -> int:
 
     console.print(table)
     console.print(f"\n[bold]Total issues found: {len(analysis.issues)}[/bold]")
-    return 0
 
 
 if __name__ == "__main__":
@@ -104,7 +103,7 @@ if __name__ == "__main__":
             # Fall back to TechDebtAnalysis
             analysis = TechDebtAnalysis.model_validate_json(stdin_content)
 
-        sys.exit(print_issues(analysis))
+        print_issues(analysis)
     except json.JSONDecodeError as e:
         console.print(f"[red]Error parsing JSON: {e}[/red]")
         sys.exit(1)
