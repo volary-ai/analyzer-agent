@@ -1,3 +1,9 @@
+.PHONY: setup
+setup:
+	@echo "Installing Python 3.12 and syncing dependencies..."
+	uv python install 3.12
+	uv sync --all-extras
+
 .PHONY: format
 format:
 	@echo "Formatting code..."
