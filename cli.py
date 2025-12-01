@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import argparse
+import json
 import os
 import sys
 
@@ -41,6 +42,9 @@ def main() -> int:
     )
     parser.add_argument("-C", "--change_dir", help="Directory to change into before running")
     parser.add_argument(
+        "--json", action="store_true", help="Output raw JSON (default for piping)"
+    )
+    parser.add_argument(
         "action",
         nargs="?",
         default="run",
@@ -78,7 +82,10 @@ def main() -> int:
                 analysis=analysis,
                 coordinator_model=args.coordinator_model,
             )
-            print_issues(evaluated_analysis)
+            if args.json:
+                print(json.dumps(evaluated_analysis, indent=2))
+            else:
+                print_issues(evaluated_analysis)
             api.print_usage_summary()
         case "analyze":
             console.print("[bold green]Running analysis...[/bold green]")
@@ -87,7 +94,10 @@ def main() -> int:
                 coordinator_model=args.coordinator_model,
                 delegate_model=args.delegate_model,
             )
-            print(analysis.model_dump_json(indent=2))
+            if args.json:
+                print(json.dumps(analysis, indent=2))
+            else:
+                print_issues(analysis)
             api.print_usage_summary()
         case "eval":
             console.print("[bold green]Evaluating issues...[/bold green]")
@@ -97,7 +107,10 @@ def main() -> int:
                 analysis=analysis,
                 coordinator_model=args.coordinator_model,
             )
-            print(evaluated_analysis.model_dump_json(indent=2))
+            if args.json:
+                print(json.dumps(evaluated_analysis, indent=2))
+            else:
+                 print_issues(evaluated_analysis)
             api.print_usage_summary()
         case "print":
             raw = sys.stdin.read()
