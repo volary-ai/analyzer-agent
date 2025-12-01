@@ -9,7 +9,8 @@ import pathspec
 import requests
 
 from .agent import Agent
-from .prompts import ANALYSIS_DELEGATE_PROMPT
+from .completion_api import CompletionApi
+from .prompts import ANALYSIS_DELEGATE_PROMPT, ANALYZER_PROMPT
 
 _LS_LIMIT = 100
 _GLOB_LIMIT = 100
@@ -293,7 +294,7 @@ def _gh_auth() -> str:
     return token
 
 
-def delegate_task_to_agent(delegee: Agent, repo_context: str) -> Callable:
+def delegate_tool_factory(api: CompletionApi, model: str, tools: list[Callable], repo_context: str) -> Callable:
     def delegate_task(task: str, description: str):
         """
         Delegates a task to a sub-agent to perform a complex step in analysing the repo.
@@ -325,8 +326,15 @@ def delegate_task_to_agent(delegee: Agent, repo_context: str) -> Callable:
                             have access to the same information you have (e.g. code snippets) unless made available here.
         :return: The result of the complex step in analysing the repo.
         """
+        delegate_agent = Agent(
+            instruction=ANALYZER_PROMPT,
+            tools=tools,
+            model=model,
+            api=api,
+            agent_name="Analysis Task Runner",
+        )
 
         prompt = ANALYSIS_DELEGATE_PROMPT.format(task=description, status=repo_context)
-        return delegee.run(task=task, prompt=prompt)
+        return delegate_agent.run(task=task, prompt=prompt)
 
     return delegate_task
