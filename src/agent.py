@@ -416,7 +416,7 @@ class Agent:
 
                 self._call_tools(tool_calls)
             else:
-                # Probably the error or legnth reasons
+                # Probably the error or length reasons
                 raise BadFinishReasonError(finish_reason)
         # Reached max iterations without completing
         console.print(f"\n[dim]Reached maximum iterations ({self.max_iterations})[/dim]")
