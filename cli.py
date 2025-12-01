@@ -3,7 +3,6 @@
 import argparse
 import os
 import sys
-from enum import Enum
 
 from pydantic import ValidationError
 from rich.console import Console
@@ -11,9 +10,8 @@ from rich.console import Console
 from src.analyze import analyze
 from src.completion_api import CompletionApi
 from src.eval import eval
-from src.output_schemas import TechDebtAnalysis, EvaluatedTechDebtAnalysis
+from src.output_schemas import EvaluatedTechDebtAnalysis, TechDebtAnalysis
 from src.print_issues import print_issues
-
 
 console = Console(stderr=True)
 
@@ -56,7 +54,7 @@ def main() -> int:
     )
     args = parser.parse_args()
     if not args.completions_api_key:
-        sys.stderr.write(f"The flag --completions_api_key is required (or set the $COMPLETIONS_API_KEY env var)\n")
+        sys.stderr.write("The flag --completions_api_key is required (or set the $COMPLETIONS_API_KEY env var)\n")
         return 1
 
     if args.change_dir:
