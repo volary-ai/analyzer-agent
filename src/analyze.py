@@ -3,7 +3,7 @@ from pathlib import Path
 from .agent import Agent, CompletionApi, console
 from .output_schemas import TechDebtAnalysis
 from .prompts import ANALYZER_PROMPT, START_ANALYSIS_PROMPT
-from .tools import delegate_task_to_agent, grep, ls, read_file
+from .tools import delegate_tool_factory, grep, ls, read_file
 
 
 def analyze(
@@ -17,17 +17,9 @@ def analyze(
 
     tools = [ls, read_file, grep]
 
-    delegate_agent = Agent(
-        instruction=ANALYZER_PROMPT,
-        tools=tools,
-        model=delegate_model,
-        api=api,
-        agent_name="Analysis Task Runner",
-    )
-
     coordinator_agent = Agent(
         instruction=ANALYZER_PROMPT,
-        tools=tools + [delegate_task_to_agent(delegate_agent, repo_context)],
+        tools=tools + [delegate_tool_factory(delegate_agent, repo_context)],
         model=coordinator_model,
         api=api,
         agent_name="Analyzer",
