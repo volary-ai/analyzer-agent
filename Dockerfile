@@ -24,4 +24,4 @@ COPY action.py .
 RUN pip install -r requirements.txt
 
 # Set the entrypoint
-ENTRYPOINT ["python", "action.py"]
+ENTRYPOINT ["python", "/action/action.py"]
