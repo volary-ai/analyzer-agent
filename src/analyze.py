@@ -1,5 +1,3 @@
-from pathlib import Path
-
 from .agent import Agent, CompletionApi, console
 from .output_schemas import TechDebtAnalysis
 from .prompts import ANALYZER_PROMPT, START_ANALYSIS_PROMPT
@@ -73,17 +71,17 @@ def get_repo_context(readme_md: str = "README.md", claude_md: str = "CLAUDE.md",
 
     # Try to read all these files
     for filename in [readme_md, claude_md, agents_md]:
-        if Path(filename).exists():
-            try:
-                content = read_file(filename)
-                context_parts += [
-                    "\n## " + headers[filename],
-                    "```markdown",
-                    content,
-                    "```",
-                ]
-            except Exception:
-                pass
+        try:
+            with open(filename) as f:
+                content = f.read()
+            context_parts += [
+                "\n## " + headers[filename],
+                "```markdown",
+                content,
+                "```",
+            ]
+        except Exception:
+            pass
 
     if context_parts:
         return "\n".join(context_parts)
