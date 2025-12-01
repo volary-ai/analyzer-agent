@@ -2,7 +2,7 @@ from pathlib import Path
 
 from .agent import Agent, CompletionApi, console
 from .output_schemas import TechDebtAnalysis
-from .prompts import START_TECH_DEBT_ANALYSIS_PROMPT, TECH_DEBT_COORDINATOR_PROMPT
+from .prompts import ANALYZER_PROMPT, START_ANALYSIS_PROMPT
 from .tools import delegate_task_to_agent, grep, ls, read_file
 
 
@@ -18,7 +18,7 @@ def analyze(
     tools = [ls, read_file, grep]
 
     delegate_agent = Agent(
-        instruction=TECH_DEBT_COORDINATOR_PROMPT,
+        instruction=ANALYZER_PROMPT,
         tools=tools,
         model=delegate_model,
         api=api,
@@ -26,16 +26,16 @@ def analyze(
     )
 
     coordinator_agent = Agent(
-        instruction=TECH_DEBT_COORDINATOR_PROMPT,
+        instruction=ANALYZER_PROMPT,
         tools=tools + [delegate_task_to_agent(delegate_agent, repo_context)],
         model=coordinator_model,
         api=api,
         agent_name="Analyzer",
     )
 
-    analysis_prompt = START_TECH_DEBT_ANALYSIS_PROMPT.format(status=repo_context)
+    start_analysis_prompt = START_ANALYSIS_PROMPT.format(status=repo_context)
     analysis = coordinator_agent.run(
-        prompt=analysis_prompt,
+        prompt=start_analysis_prompt,
         output_class=TechDebtAnalysis,
     )
 

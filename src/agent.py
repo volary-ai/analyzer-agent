@@ -1,3 +1,7 @@
+"""
+Analyzer agent - generates technical debt issues from a codebase.
+"""
+
 import json
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
