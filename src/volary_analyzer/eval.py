@@ -50,7 +50,7 @@ def eval(
         model=coordinator_model,
         api=api,
         agent_name="Evaluator",
-        tools=[],
+        tools=tools,
     )
 
     console.print("[bold]Running evaluation...[/bold]", style="cyan")
@@ -81,6 +81,7 @@ def eval(
                     impact_score=evaluation.impact_score,
                     effort=evaluation.effort,
                 ),
+                duplicated_by=evaluation.duplicated_by,
             )
             evaluated_issues.append(evaluated_issue)
 

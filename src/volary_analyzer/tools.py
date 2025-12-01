@@ -178,30 +178,41 @@ def grep(pattern: str, path: str = ".", file_pattern: str = "*") -> str:
         return f"Error executing grep: {str(e)}"
 
 
-def query_issues_factory(collection: chromadb.Collection) -> Callable | None:
+def query_issues_factory(collection: chromadb.Collection) -> Callable[[list[str]], str]:
     """
-    Creates a query issues tool.
+    Creates a query issues tool for semantic search over GitHub issues and PRs.
 
-    :return: The tool to be passed to the agent, if we're in a GitHub repo and have auth set up.
+    Args:
+        collection: ChromaDB collection containing indexed issues
+
+    Returns:
+        Function that performs semantic search over the issue collection
     """
     def query_issues(queries: list[str]) -> str:
         """
-        Queries issues and PRs from GitHub's search/issues API associated with this codebase. This can be used to find
-        existing issues related to a topic.
+        Search GitHub issues and PRs using semantic vector search.
 
-        This tool is only available when working in a GitHub repository. If you see this prompt that means you're in a
-        GitHub codebase.
-
-        The query syntax uses GitHub's format i.e. SEARCH_KEYWORD_1 SEARCH_KEYWORD_N QUALIFIER_1 QUALIFIER_N e.g.
-        `"use after free" SomeType in:title state:open`.
+        This performs semantic search over issue titles, descriptions, and PR diffs
+        using ChromaDB's vector embeddings. It finds issues based on meaning rather
+        than exact keyword matches.
 
         Usage notes:
-        - DO run multiple queries at once including synonyms and rephrasing of the potential issue
-        - DO use this tool to verify the issue hasn't already been reported.
-        - DO use the delegate_task tool for this as it's far more cost-effective
+        - Run multiple queries with different phrasings to find related issues
+        - DO NOT run multiple queries for different issues simultaneously. This will only muddy the embedding. Use
+          multiple tool calls for each issue instead.
+        - Queries are semantic, so "authentication failure" will match "login broken"
+        - Returns top 5 most relevant results per query
+        - Use this to check if issues have already been reported
 
-        :param queries: List of search queries to run against the issue tracker
-        :return: a list of issues from the ticketing system
+        Examples:
+            query_issues(["memory leak in parser"])
+            query_issues(["rate limiting", "API throttling"])
+
+        Args:
+            queries: List of natural language search queries
+
+        Returns:
+            Formatted string containing top matching issues with titles, URLs, and content
         """
         results = collection.query(query_texts=queries, n_results=5)
         ret:list[str] = []
