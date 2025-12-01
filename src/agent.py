@@ -38,11 +38,14 @@ class MaxIterationsReachedError(AgentError):
 class EmptyResponseError(AgentError):
     """Raised when the agent returns an empty response."""
 
-class BadFinishReason(AgentError):
+
+class BadFinishReasonError(AgentError):
     """Raised when the agent reaches a bad finish reason."""
+
     def __init__(self, reason: str):
         super().__init__(f"Agent completed with unexpected finish reason: {reason}")
         self.reason = reason
+
 
 # This is a virtual function all agents have access to, to keep the user updated
 def update_user(msg: str) -> None:
@@ -414,7 +417,7 @@ class Agent:
                 self._call_tools(tool_calls)
             else:
                 # Probably the error or legnth reasons
-                raise BadFinishReason(finish_reason)
+                raise BadFinishReasonError(finish_reason)
         # Reached max iterations without completing
         console.print(f"\n[dim]Reached maximum iterations ({self.max_iterations})[/dim]")
         last_message = self.messages[-1] if self.messages else None
