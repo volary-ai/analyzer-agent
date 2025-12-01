@@ -62,7 +62,7 @@ def main() -> int:
             analysis=analysis,
             coordinator_model=coordinator_model,
         )
-        print_issues(evaluated_analysis, width=180)
+        print_issues(evaluated_analysis)
         write_summary_markdown(summary_output, evaluated_analysis)
         api.print_usage_summary()
         print("Analysis complete!")
