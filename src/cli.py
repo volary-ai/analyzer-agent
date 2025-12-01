@@ -3,6 +3,14 @@
 import argparse
 import os
 import sys
+from enum import Enum
+
+
+class Action(Enum):
+    RUN = "run"  # Run all agents to completion
+    ANALYSE = "analyse"  # Run just the analysis agent, no input, outputting JSON
+    EVAL = "eval"  # Run just the evaluation agent, receiving JSON as input & outputting JSON
+    PRINT = "print"  # Receive JSON as input and print output
 
 
 def main() -> int:
@@ -34,8 +42,11 @@ def main() -> int:
     parser.add_argument(
         "-C", "--change_dir", help="Directory to change into before running"
     )
+    parser.add_argument(
+        "action", nargs="?", default=Action.RUN, type=Action, choices=Action,
+    )
     args = parser.parse_args()
-
+    print(action)
 
 
 if __name__ == "__main__":
