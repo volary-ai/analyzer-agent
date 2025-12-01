@@ -5,11 +5,16 @@ import os
 import sys
 from enum import Enum
 
+from rich.console import Console
+
 from src.analyze import analyze
 from src.completion_api import CompletionApi
 from src.eval import eval
 from src.output_schemas import TechDebtAnalysis, EvaluatedTechDebtAnalysis
 from src.print_issues import print_issues
+
+
+console = Console(stderr=True)
 
 
 def main() -> int:
@@ -61,6 +66,7 @@ def main() -> int:
 
     match args.action:
         case "run":
+            console.print("[bold green]Running analysis...[/bold green]")
             analysis = analyze(
                 api=api,
                 coordinator_model=args.coordinator_model,
@@ -74,6 +80,7 @@ def main() -> int:
             print_issues(evaluated_analysis)
             api.print_usage_summary()
         case "analyze":
+            console.print("[bold green]Running analysis...[/bold green]")
             analysis = analyze(
                 api=api,
                 coordinator_model=args.coordinator_model,
@@ -82,6 +89,7 @@ def main() -> int:
             print(analysis.model_dump_json(indent=2))
             api.print_usage_summary()
         case "eval":
+            console.print("[bold green]Evaluating issues...[/bold green]")
             analysis = TechDebtAnalysis.model_validate_json(sys.stdin.read())
             evaluated_analysis = eval(
                 api=api,
@@ -92,7 +100,7 @@ def main() -> int:
             api.print_usage_summary()
         case "print":
             analysis = EvaluatedTechDebtAnalysis.model_validate_json(sys.stdin.read())
-            print_issues(evaluated_analysis)
+            print_issues(analysis)
     return 0
 
 
