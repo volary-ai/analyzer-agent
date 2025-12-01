@@ -18,7 +18,7 @@ from .prompts import EVAL_PROMPT, EVAL_SYSTEM_PROMPT
 console = Console(stderr=True)  # Output to stderr so stdout is clean for piping
 
 
-def eval(
+def evaluate(
     *,
     analysis: TechDebtAnalysis,
     api: CompletionApi,

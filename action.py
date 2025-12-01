@@ -8,7 +8,7 @@ import sys
 
 from src.analyze import analyze
 from src.completion_api import CompletionApi
-from src.eval import eval
+from src.eval import evaluate
 from src.print_issues import print_issues
 
 DEFAULT_COMPLETION_ENDPOINT = "https://openrouter.ai/api/v1/chat/completions"
@@ -49,7 +49,7 @@ def main() -> int:
             coordinator_model=coordinator_model,
             delegate_model=delegate_model,
         )
-        evaluated_analysis = eval(
+        evaluated_analysis = evaluate(
             api=api,
             analysis=analysis,
             coordinator_model=coordinator_model,
