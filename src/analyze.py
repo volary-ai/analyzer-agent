@@ -45,7 +45,7 @@ def analyze(
     return analysis
 
 
-def get_repo_context(readme_md: str="README.md", claude_md:str="CLAUDE.md") -> str:
+def get_repo_context(readme_md: str = "README.md", claude_md: str = "CLAUDE.md") -> str:
     """
     Gather context about the repository structure and documentation.
     Returns a formatted string with repo overview information.
