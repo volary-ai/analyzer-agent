@@ -54,16 +54,16 @@ def print_issues(analysis: TechDebtAnalysis | EvaluatedTechDebtAnalysis) -> int:
         Exit code (0 for success)
     """
     table = Table(show_header=True, header_style="bold magenta")
-    table.add_column("Title", style="cyan bold", width=30)
-    table.add_column("Description", style="white", width=40)
-    table.add_column("Action", style="green", width=35)
+    table.add_column("Title", style="cyan bold", width=30, no_wrap=False)
+    table.add_column("Description", style="white", width=40, no_wrap=False)
+    table.add_column("Action", style="green", width=35, no_wrap=False)
 
     # Check if this is evaluated analysis by checking if first issue has evaluation
     has_evaluation = isinstance(analysis, EvaluatedTechDebtAnalysis)
     if has_evaluation:
-        table.add_column("Evaluation", style="yellow", width=25)
+        table.add_column("Evaluation", style="yellow", width=25, no_wrap=False)
 
-    table.add_column("Files", style="dim", width=25)
+    table.add_column("Files", style="dim", width=50, no_wrap=False, overflow="fold")
 
     for issue in analysis.issues:
         # Format files list

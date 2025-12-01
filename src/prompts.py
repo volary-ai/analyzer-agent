@@ -51,6 +51,11 @@ enables you to focus on the broader picture.
 **Lower priority** items cover TODO cleanup, lint optimization, and test coverage improvements.
 </bad-response>
 
+You should avoid issues that can't be actioned now:
+<bad-response>
+1. Remove pytest once migration to unittest is complete 
+</bad-response>
+
 {status}
 """
 
