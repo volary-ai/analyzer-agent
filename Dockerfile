@@ -6,6 +6,7 @@ RUN apt-get update \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /action
+USER root
 
 # Install uv
 COPY --from=ghcr.io/astral-sh/uv:0.9.13 /uv /uvx /bin/
