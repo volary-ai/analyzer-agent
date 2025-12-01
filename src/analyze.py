@@ -45,7 +45,7 @@ def analyze(
     return analysis
 
 
-def get_repo_context(readme_md: str = "README.md", claude_md: str = "CLAUDE.md") -> str:
+def get_repo_context(readme_md: str = "README.md", claude_md: str = "CLAUDE.md", agents_md: str = "AGENTS.md") -> str:
     """
     Gather context about the repository structure and documentation.
     Returns a formatted string with repo overview information.
@@ -65,33 +65,25 @@ def get_repo_context(readme_md: str = "README.md", claude_md: str = "CLAUDE.md")
     except Exception:
         pass
 
-    # Try to read README.md
-    readme_path = Path(readme_md)
-    if readme_path.exists():
-        try:
-            readme_content = read_file(readme_md)
-            context_parts += [
-                "\n## README.md",
-                "```markdown",
-                readme_content,
-                "```",
-            ]
-        except Exception:
-            pass
+    headers = {
+        readme_md: "README.md",
+        claude_md: "CLAUDE.md (Project Instructions)",
+        agents_md: "AGENTS.md (Project Instructions)",
+    }
 
-    # Try to read CLAUDE.md
-    claude_md_path = Path(claude_md)
-    if claude_md_path.exists():
-        try:
-            claude_content = read_file(claude_md)
-            context_parts += [
-                "\n## CLAUDE.md (Project Instructions)",
-                "```markdown",
-                claude_content,
-                "```",
-            ]
-        except Exception:
-            pass
+    # Try to read all these files
+    for filename in [readme_md, claude_md, agents_md]:
+        if Path(filename).exists():
+            try:
+                content = read_file(filename)
+                context_parts += [
+                    "\n## " + headers[filename],
+                    "```markdown",
+                    content,
+                    "```",
+                ]
+            except Exception:
+                pass
 
     if context_parts:
         return "\n".join(context_parts)
