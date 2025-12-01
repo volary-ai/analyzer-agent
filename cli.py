@@ -38,18 +38,20 @@ def main() -> int:
     )
     parser.add_argument(
         "--completions_endpoint",
-        default=os.getenv(
-            "COMPLETIONS_ENDPOINT", "https://openrouter.ai/api/v1/chat/completions"
-        ),
+        default=os.getenv("COMPLETIONS_ENDPOINT", "https://openrouter.ai/api/v1/chat/completions"),
         help="Completions endpoint (default: env COMPLETIONS_ENDPOINT or OpenRouter)",
     )
+    parser.add_argument("-C", "--change_dir", help="Directory to change into before running")
     parser.add_argument(
-        "-C", "--change_dir", help="Directory to change into before running"
-    )
-    parser.add_argument(
-        "action", nargs="?", default="run", choices=[
+        "action",
+        nargs="?",
+        default="run",
+        choices=[
             # An enum would be nice for this but it looks bad in the CLI
-            "run", "analyze", "eval", "print",
+            "run",
+            "analyze",
+            "eval",
+            "print",
         ],
     )
     args = parser.parse_args()
