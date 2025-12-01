@@ -74,3 +74,6 @@ dmypy.json
 
 # pytype static type analyzer
 .pytype/
+
+# ChromaDB persistent storage
+chroma_db/

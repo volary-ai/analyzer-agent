@@ -5,6 +5,7 @@ import subprocess
 from collections.abc import Callable
 from pathlib import Path
 
+import chromadb
 import pathspec
 import requests
 
@@ -177,21 +178,13 @@ def grep(pattern: str, path: str = ".", file_pattern: str = "*") -> str:
         return f"Error executing grep: {str(e)}"
 
 
-def query_issues_factory() -> Callable | None:
+def query_issues_factory(collection: chromadb.Collection) -> Callable | None:
     """
     Creates a query issues tool.
 
     :return: The tool to be passed to the agent, if we're in a GitHub repo and have auth set up.
     """
-    # TODO(jon): Make this tool use an abstraction over the issues. We don't want to be tied to just github, but also we
-    #  want to include issues that have previously been raised by this tool but rejected by the user that may have never
-    #  made it to the actual issue tracker. This is fine for the proof-of-concept though.
-    repo = _get_github_repo()
-    if not repo:
-        return None
-    token = _gh_auth()
-
-    def query_issues(queries: list[str]) -> list[str]:
+    def query_issues(queries: list[str]) -> str:
         """
         Queries issues and PRs from GitHub's search/issues API associated with this codebase. This can be used to find
         existing issues related to a topic.
@@ -210,89 +203,26 @@ def query_issues_factory() -> Callable | None:
         :param queries: List of search queries to run against the issue tracker
         :return: a list of issues from the ticketing system
         """
-        results = []
-        for query in queries:
-            try:
-                # Search issues in the specific repository
-                search_query = f"{query} repo:{repo}"
-                response = requests.get(
-                    "https://api.github.com/search/issues",
-                    headers={
-                        "Authorization": f"Bearer {token}",
-                        "Accept": "application/vnd.github.v3+json",
-                    },
-                    params={"q": search_query, "per_page": 10},
-                    timeout=10,
-                )
+        results = collection.query(query_texts=queries, n_results=5)
+        ret:list[str] = []
+        for i, (doc, distance, doc_id, meta) in enumerate(
+                zip(
+                    results["documents"][0],
+                    results["distances"][0],
+                    results["ids"][0],
+                    results["metadatas"][0], strict=False,
+                ),
+                1,
+        ):
+            ret.append(f"===== {i}. [ID: {doc_id}] (distance: {distance:.4f}) ======")
+            ret.append(f"   Issue #{meta['number']} ({meta['state'].upper()}): {meta['title']}")
+            ret.append(f"   URL: {meta['url']}")
+            ret.append(f"   Body:\n{doc}")
 
-                if response.status_code == 401:
-                    return ["Error: GitHub authentication failed. Please check your GITHUB_TOKEN or GH_TOKEN."]
-                elif response.status_code == 403:
-                    return ["Error: GitHub API rate limit exceeded or access forbidden."]
-                elif response.status_code != 200:
-                    results.append(f"Error searching for '{query}': HTTP {response.status_code}")
-                    continue
+        return "\n".join(ret)
 
-                data = response.json()
-                total_count = data.get("total_count", 0)
-
-                if total_count == 0:
-                    results.append(f"Query: '{query}' - No issues found")
-                else:
-                    results.append(f"\nQuery: '{query}' - Found {total_count} issue(s) (showing top 10):\n")
-                    for issue in data.get("items", []):
-                        state = issue["state"].upper()
-                        number = issue["number"]
-                        title = issue["title"]
-                        url = issue["html_url"]
-                        labels = ", ".join([label["name"] for label in issue.get("labels", [])])
-                        labels_str = f" [{labels}]" if labels else ""
-
-                        results.append(f"  #{number} ({state}): {title}{labels_str}")
-                        results.append(f"    URL: {url}")
-
-            except requests.exceptions.Timeout:
-                results.append(f"Error: Request timed out while searching for '{query}'")
-            except Exception as e:
-                results.append(f"Error searching for '{query}': {str(e)}")
-
-        return results
 
     return query_issues
-
-
-def _get_github_repo() -> str | None:
-    """Extract GitHub owner and repo name from git remote."""
-    remote_url = subprocess.check_output(
-        ["git", "remote", "get-url", "origin"],
-        text=True,
-    ).strip()
-
-    # Handle both SSH and HTTPS URLs
-    # SSH: git@github.com:owner/repo.git
-    # HTTPS: https://github.com/owner/repo.git
-    if remote_url.startswith("git@github.com:"):
-        repo_path = remote_url.removeprefix("git@github.com:")
-    elif "github.com" in remote_url:
-        _, _, repo_path = remote_url.partition("github.com/")
-    else:
-        return None
-
-    # Remove .git suffix if present
-    return repo_path.removesuffix(".git")
-
-
-def _gh_auth() -> str:
-    token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
-    if token:
-        return token
-    if not shutil.which("gh"):
-        raise Exception("Error: No GitHub authentication found (GITHUB_TOKEN / GH_TOKEN not set, `gh` binary not found")
-    token = subprocess.check_output(["gh", "auth", "token"], text=True, timeout=5).strip()
-    if not token:
-        raise Exception("Error: No GitHub authentication returned from `gh auth token`.")
-    return token
-
 
 def delegate_tool_factory(api: CompletionApi, model: str, tools: list[Callable], repo_context: str) -> Callable:
     def delegate_task(task: str, description: str):

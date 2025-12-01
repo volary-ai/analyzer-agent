@@ -1,11 +1,12 @@
 """
 Evaluation agent - scores technical debt issues for relevance and actionability.
 """
-
+import chromadb
 from rich.console import Console
 
 from .agent import Agent
 from .completion_api import CompletionApi
+from .github import github_auth, GitHubClient, get_github_repo
 from .output_schemas import (
     EvaluatedTechDebtAnalysis,
     EvaluatedTechDebtIssue,
@@ -14,6 +15,8 @@ from .output_schemas import (
     TechDebtAnalysis,
 )
 from .prompts import EVAL_PROMPT, EVAL_SYSTEM_PROMPT
+from .tools import query_issues_factory
+from .vectorised_issue_search import github_vector_db
 
 console = Console(stderr=True)  # Output to stderr so stdout is clean for piping
 
@@ -32,6 +35,15 @@ def eval(
         f"[bold]Received {len(analysis.issues)} issues to evaluate[/bold]",
         style="cyan",
     )
+
+    tools = []
+    if repo_path := get_github_repo():
+        chroma_client = chromadb.PersistentClient(path="./chroma_db")
+        gh_client = GitHubClient(token=github_auth(), repo_path=repo_path)
+        collection = github_vector_db(chroma_client, gh_client)
+        tools.append(
+            query_issues_factory(collection)
+        )
 
     eval_agent = Agent(
         instruction=EVAL_SYSTEM_PROMPT,
