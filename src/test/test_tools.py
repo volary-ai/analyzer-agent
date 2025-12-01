@@ -112,8 +112,8 @@ class TestLsFunction:
         try:
             os.chdir(tmp_path)
             result = ls("**/*.py")
-            assert any("file1.py" in f for f in result)
-            assert any("file2.py" in f for f in result)
+            assert "file1.py" in result
+            assert "file2.py" in result
         finally:
             os.chdir(original_dir)
 
