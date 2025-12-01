@@ -29,6 +29,6 @@ fix:
 .PHONY: test
 test:
 	@echo "Running syntax checks..."
-	uv run python -m py_compile *.py
+	uv run python -m compileall *.py src/
 	@echo "Running tests..."
 	uv run pytest -v
