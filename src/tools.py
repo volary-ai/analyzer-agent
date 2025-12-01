@@ -11,8 +11,11 @@ import requests
 from .agent import Agent
 from .prompts import ANALYSIS_DELEGATE_PROMPT
 
+_LS_LIMIT = 100
+_GLOB_LIMIT = 100
 
-def ls(glob: str) -> list[str]:
+
+def ls(glob: str) -> str:
     """
     Lists files under a directory.
 
@@ -29,8 +32,14 @@ def ls(glob: str) -> list[str]:
     matches = glob_module.glob(glob, recursive=True)
     # Filter out ignored paths
     filtered = [m for m in matches if not _should_ignore(m)]
+
+    ret = sorted(filtered)
+    if len(ret) > _LS_LIMIT:
+        ret_str = "\n".join(ret)
+        # limit results to avoid filling the context window
+        return f"found {len(ret)} results. Showing first {_LS_LIMIT}: \n{ret_str}"
     # Sort for consistent ordering
-    return sorted(filtered)
+    return "\n".join(ret)
 
 
 def _should_ignore(path: str) -> bool:
@@ -146,13 +155,13 @@ def grep(pattern: str, path: str = ".", file_pattern: str = "*") -> str:
         elif file_pattern != "*":
             cmd.extend(["--", file_pattern])
 
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
 
         if result.returncode == 0:
             # Limit output to avoid overwhelming the LLM
             lines = result.stdout.strip().split("\n")
-            if len(lines) > 100:
-                return f"Found {len(lines)} matches (showing first 100):\n" + "\n".join(lines[:100])
+            if len(lines) > _GLOB_LIMIT:
+                return f"Found {len(lines)} matches (showing first 100):\n" + "\n".join(lines[:_GLOB_LIMIT])
             return result.stdout.strip()
         elif result.returncode == 1:
             # No matches found (this is normal, not an error)
