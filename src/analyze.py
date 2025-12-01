@@ -56,10 +56,12 @@ def get_repo_context() -> str:
     try:
         top_level = ls("*")
         if top_level:
-            context_parts.append("## Repository Structure (top-level)")
-            context_parts.append("```")
-            context_parts.append("\n".join(top_level))
-            context_parts.append("```")
+            context_parts += [
+                "## Repository Structure (top-level)",
+                "```",
+                "\n".join(top_level),
+                "```",
+            ]
     except Exception:
         pass
 
@@ -68,10 +70,12 @@ def get_repo_context() -> str:
     if readme_path.exists():
         try:
             readme_content = read_file("README.md")
-            context_parts.append("\n## README.md")
-            context_parts.append("```markdown")
-            context_parts.append(readme_content)
-            context_parts.append("```")
+            context_parts += [
+                "\n## README.md",
+                "```markdown",
+                readme_content,
+                "```",
+            ]
         except Exception:
             pass
 
@@ -80,10 +84,12 @@ def get_repo_context() -> str:
     if claude_md_path.exists():
         try:
             claude_content = read_file("CLAUDE.md")
-            context_parts.append("\n## CLAUDE.md (Project Instructions)")
-            context_parts.append("```markdown")
-            context_parts.append(claude_content)
-            context_parts.append("```")
+            context_parts += [
+                "\n## CLAUDE.md (Project Instructions)",
+                "```markdown",
+                claude_content,
+                "```",
+            ]
         except Exception:
             pass
 
