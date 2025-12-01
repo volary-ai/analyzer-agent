@@ -6,13 +6,6 @@ import sys
 from enum import Enum
 
 
-class Action(Enum):
-    RUN = "run"  # Run all agents to completion
-    ANALYSE = "analyse"  # Run just the analysis agent, no input, outputting JSON
-    EVAL = "eval"  # Run just the evaluation agent, receiving JSON as input & outputting JSON
-    PRINT = "print"  # Receive JSON as input and print output
-
-
 def main() -> int:
     """Entry point for the analyzer CLI."""
     parser = argparse.ArgumentParser(description="Volary analysis agent - finds code & tech debt issues")
@@ -27,9 +20,9 @@ def main() -> int:
         help="Small model for exploration (default: env DELEGATE_MODEL or openai/gpt-5.1-codex-mini)",
     )
     parser.add_argument(
-        "--openrouter_api_key",
+        "--completions_api_key",
         default=os.getenv("COMPLETIONS_API_KEY"),
-        help="OpenRouter API key (default: env COMPLETIONS_API_KEY)",
+        help="API key for the completions endpoint (default: env COMPLETIONS_API_KEY)",
         required=True,
     )
     parser.add_argument(
@@ -43,7 +36,10 @@ def main() -> int:
         "-C", "--change_dir", help="Directory to change into before running"
     )
     parser.add_argument(
-        "action", nargs="?", default=Action.RUN, type=Action, choices=Action,
+        "action", nargs="?", default="run", choices=[
+            # An enum would be nice for this but it looks bad in the CLI
+            "run", "analyse", "eval", "print",
+        ],
     )
     args = parser.parse_args()
     print(action)
