@@ -1,12 +1,15 @@
 import glob as glob_module
+import os
+import shutil
 import subprocess
 from collections.abc import Callable
 from pathlib import Path
 
 import pathspec
+import requests
 
 from .agent import Agent
-from .prompts import TECH_DEBT_DELEGATED_TASK_PROMPT
+from .prompts import ANALYSIS_DELEGATE_PROMPT
 
 
 def ls(glob: str) -> list[str]:
@@ -87,9 +90,7 @@ def read_file(path: str, from_line: str = None, to_line: str = None) -> str:
 
     try:
         # Run git blame to get annotation info
-        output = subprocess.run(
-            ["git", "blame", "--date=short", path], capture_output=True, text=True, check=True
-        ).stdout
+        output = subprocess.check_output(["git", "blame", "--date=short", path], text=True)
 
         # Filter lines if range is specified
         if from_line is not None or to_line is not None:
@@ -166,6 +167,123 @@ def grep(pattern: str, path: str = ".", file_pattern: str = "*") -> str:
         return f"Error executing grep: {str(e)}"
 
 
+def query_issues_factory() -> Callable | None:
+    """
+    Creates a query issues tool.
+
+    :return: The tool to be passed to the agent, if we're in a GitHub repo and have auth set up.
+    """
+    # TODO(jon): Make this tool use an abstraction over the issues. We don't want to be tied to just github, but also we
+    #  want to include issues that have previously been raised by this tool but rejected by the user that may have never
+    #  made it to the actual issue tracker. This is fine for the proof-of-concept though.
+    repo = _get_github_repo()
+    if not repo:
+        return None
+    token = _gh_auth()
+
+    def query_issues(queries: list[str]) -> list[str]:
+        """
+        Queries issues and PRs from GitHub's search/issues API associated with this codebase. This can be used to find
+        existing issues related to a topic.
+
+        This tool is only available when working in a GitHub repository. If you see this prompt that means you're in a
+        GitHub codebase.
+
+        The query syntax uses GitHub's format i.e. SEARCH_KEYWORD_1 SEARCH_KEYWORD_N QUALIFIER_1 QUALIFIER_N e.g.
+        `"use after free" SomeType in:title state:open`.
+
+        Usage notes:
+        - DO run multiple queries at once including synonyms and rephrasing of the potential issue
+        - DO use this tool to verify the issue hasn't already been reported.
+        - DO use the delegate_task tool for this as it's far more cost-effective
+
+        :param queries: List of search queries to run against the issue tracker
+        :return: a list of issues from the ticketing system
+        """
+        results = []
+        for query in queries:
+            try:
+                # Search issues in the specific repository
+                search_query = f"{query} repo:{repo}"
+                response = requests.get(
+                    "https://api.github.com/search/issues",
+                    headers={
+                        "Authorization": f"Bearer {token}",
+                        "Accept": "application/vnd.github.v3+json",
+                    },
+                    params={"q": search_query, "per_page": 10},
+                    timeout=10,
+                )
+
+                if response.status_code == 401:
+                    return ["Error: GitHub authentication failed. Please check your GITHUB_TOKEN or GH_TOKEN."]
+                elif response.status_code == 403:
+                    return ["Error: GitHub API rate limit exceeded or access forbidden."]
+                elif response.status_code != 200:
+                    results.append(f"Error searching for '{query}': HTTP {response.status_code}")
+                    continue
+
+                data = response.json()
+                total_count = data.get("total_count", 0)
+
+                if total_count == 0:
+                    results.append(f"Query: '{query}' - No issues found")
+                else:
+                    results.append(f"\nQuery: '{query}' - Found {total_count} issue(s) (showing top 10):\n")
+                    for issue in data.get("items", []):
+                        state = issue["state"].upper()
+                        number = issue["number"]
+                        title = issue["title"]
+                        url = issue["html_url"]
+                        labels = ", ".join([label["name"] for label in issue.get("labels", [])])
+                        labels_str = f" [{labels}]" if labels else ""
+
+                        results.append(f"  #{number} ({state}): {title}{labels_str}")
+                        results.append(f"    URL: {url}")
+
+            except requests.exceptions.Timeout:
+                results.append(f"Error: Request timed out while searching for '{query}'")
+            except Exception as e:
+                results.append(f"Error searching for '{query}': {str(e)}")
+
+        return results
+
+    return query_issues
+
+
+def _get_github_repo() -> str | None:
+    """Extract GitHub owner and repo name from git remote."""
+    remote_url = subprocess.check_output(
+        ["git", "remote", "get-url", "origin"],
+        text=True,
+    ).strip()
+
+    # Handle both SSH and HTTPS URLs
+    # SSH: git@github.com:owner/repo.git
+    # HTTPS: https://github.com/owner/repo.git
+    if remote_url.startswith("git@github.com:"):
+        repo_path = remote_url.removeprefix("git@github.com:")
+    elif "github.com" in remote_url:
+        _, _, repo_path = remote_url.partition("github.com/")
+    else:
+        return None
+
+    # Remove .git suffix if present
+    return repo_path.removesuffix(".git")
+
+
+def _gh_auth() -> str:
+    token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
+    if token:
+        return token
+    if not shutil.which("gh"):
+        raise Exception("Error: No GitHub authentication found (GITHUB_TOKEN / GH_TOKEN not set, `gh` binary not found")
+    token = subprocess.check_output(["gh", "auth", "token"], text=True, timeout=5).strip()
+    if not token:
+        raise Exception("Error: No GitHub authentication returned from `gh auth token`.")
+    return token
+
+
 def delegate_task_to_agent(delegee: Agent, repo_context: str) -> Callable:
     def delegate_task(task: str, description: str):
         """
@@ -199,7 +317,7 @@ def delegate_task_to_agent(delegee: Agent, repo_context: str) -> Callable:
         :return: The result of the complex step in analysing the repo.
         """
 
-        prompt = TECH_DEBT_DELEGATED_TASK_PROMPT.format(task=description, status=repo_context)
+        prompt = ANALYSIS_DELEGATE_PROMPT.format(task=description, status=repo_context)
         return delegee.run(task=task, prompt=prompt)
 
     return delegate_task
