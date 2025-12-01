@@ -5,10 +5,11 @@ import os
 import sys
 from enum import Enum
 
-from analyze import analyze
-from completion_api import CompletionApi
-from eval import eval
-from print_issues import print_issues
+from src.analyze import analyze
+from src.completion_api import CompletionApi
+from src.eval import eval
+from src.output_schemas import TechDebtAnalysis, EvaluatedTechDebtAnalysis
+from src.print_issues import print_issues
 
 
 def main() -> int:
@@ -28,7 +29,6 @@ def main() -> int:
         "--completions_api_key",
         default=os.getenv("COMPLETIONS_API_KEY"),
         help="API key for the completions endpoint (default: env COMPLETIONS_API_KEY)",
-        required=True,
     )
     parser.add_argument(
         "--completions_endpoint",
@@ -47,10 +47,16 @@ def main() -> int:
         ],
     )
     args = parser.parse_args()
+    if not args.completions_api_key:
+        sys.stderr.write(f"The flag --completions_api_key is required (or set the $COMPLETIONS_API_KEY env var)\n")
+        return 1
+
+    if args.change_dir:
+        os.chdir(args.change_dir)
 
     api = CompletionApi(
         api_key=args.completions_api_key,
-        endpoints=args.completions_endpoint,
+        endpoint=args.completions_endpoint,
     )
 
     match args.action:
@@ -66,13 +72,28 @@ def main() -> int:
                 coordinator_model=args.coordinator_model,
             )
             print_issues(evaluated_analysis)
+            api.print_usage_summary()
         case "analyze":
             analysis = analyze(
                 api=api,
                 coordinator_model=args.coordinator_model,
                 delegate_model=args.delegate_model,
             )
-
+            print(analysis.model_dump_json(indent=2))
+            api.print_usage_summary()
+        case "eval":
+            analysis = TechDebtAnalysis.model_validate_json(sys.stdin.read())
+            evaluated_analysis = eval(
+                api=api,
+                analysis=analysis,
+                coordinator_model=args.coordinator_model,
+            )
+            print(evaluated_analysis.model_dump_json(indent=2))
+            api.print_usage_summary()
+        case "print":
+            analysis = EvaluatedTechDebtAnalysis.model_validate_json(sys.stdin.read())
+            print_issues(evaluated_analysis)
+    return 0
 
 
 if __name__ == "__main__":
