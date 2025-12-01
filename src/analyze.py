@@ -45,7 +45,7 @@ def analyze(
     return analysis
 
 
-def get_repo_context() -> str:
+def get_repo_context(readme_md: str = "README.md", claude_md: str = "CLAUDE.md", agents_md: str = "AGENTS.md") -> str:
     """
     Gather context about the repository structure and documentation.
     Returns a formatted string with repo overview information.
@@ -56,36 +56,34 @@ def get_repo_context() -> str:
     try:
         top_level = ls("*")
         if top_level:
-            context_parts.append("## Repository Structure (top-level)")
-            context_parts.append("```")
-            context_parts.append("\n".join(top_level))
-            context_parts.append("```")
+            context_parts += [
+                "## Repository Structure (top-level)",
+                "```",
+                "\n".join(top_level),
+                "```",
+            ]
     except Exception:
         pass
 
-    # Try to read README.md
-    readme_path = Path("README.md")
-    if readme_path.exists():
-        try:
-            readme_content = read_file("README.md")
-            context_parts.append("\n## README.md")
-            context_parts.append("```markdown")
-            context_parts.append(readme_content)
-            context_parts.append("```")
-        except Exception:
-            pass
+    headers = {
+        readme_md: "README.md",
+        claude_md: "CLAUDE.md (Project Instructions)",
+        agents_md: "AGENTS.md (Project Instructions)",
+    }
 
-    # Try to read CLAUDE.md
-    claude_md_path = Path("CLAUDE.md")
-    if claude_md_path.exists():
-        try:
-            claude_content = read_file("CLAUDE.md")
-            context_parts.append("\n## CLAUDE.md (Project Instructions)")
-            context_parts.append("```markdown")
-            context_parts.append(claude_content)
-            context_parts.append("```")
-        except Exception:
-            pass
+    # Try to read all these files
+    for filename in [readme_md, claude_md, agents_md]:
+        if Path(filename).exists():
+            try:
+                content = read_file(filename)
+                context_parts += [
+                    "\n## " + headers[filename],
+                    "```markdown",
+                    content,
+                    "```",
+                ]
+            except Exception:
+                pass
 
     if context_parts:
         return "\n".join(context_parts)
