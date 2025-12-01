@@ -1,3 +1,10 @@
+FROM ghcr.io/astral-sh/uv:alpine AS builder
+
+COPY pyproject.toml .
+COPY uv.lock .
+
+RUN uv export --no-hashes --format requirements-txt > requirements.txt
+
 FROM python:3.12-slim
 
 RUN apt-get update \
@@ -7,18 +14,14 @@ RUN apt-get update \
 
 WORKDIR /action
 
-# Install uv
-COPY --from=ghcr.io/astral-sh/uv:0.9.13 /uv /uvx /bin/
-
 # Copy project files
-COPY .python-version .
+COPY --from=builder requirements.txt .
 COPY pyproject.toml .
-COPY uv.lock .
 COPY src/ ./src/
 COPY action.py .
 
 # Install dependencies using uv
-RUN uv sync --frozen --no-dev
+RUN pip install -r requirements.txt
 
 # Set the entrypoint
-ENTRYPOINT ["uv", "run", "/action/action.py"]
+ENTRYPOINT ["python", "action.py"]
