@@ -19,7 +19,15 @@ def analyze(
 
     coordinator_agent = Agent(
         instruction=ANALYZER_PROMPT,
-        tools=tools + [delegate_tool_factory(delegate_agent, repo_context)],
+        tools=tools
+        + [
+            delegate_tool_factory(
+                api=api,
+                model=delegate_model,
+                tools=tools,
+                repo_context=repo_context,
+            )
+        ],
         model=coordinator_model,
         api=api,
         agent_name="Analyzer",

@@ -294,7 +294,7 @@ def _gh_auth() -> str:
     return token
 
 
-def delegate_tool_factory(api:CompletionApi, model:str, tools:list[Callable], repo_context: str) -> Callable:
+def delegate_tool_factory(api: CompletionApi, model: str, tools: list[Callable], repo_context: str) -> Callable:
     def delegate_task(task: str, description: str):
         """
         Delegates a task to a sub-agent to perform a complex step in analysing the repo.
