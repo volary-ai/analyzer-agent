@@ -248,16 +248,28 @@ class Agent:
         if len(actual_tool_calls) == 0:
             return
 
-        # Execute all tools in parallel using ThreadPoolExecutor
+        results = []
+        tool_call_futures = []
         with ThreadPoolExecutor(max_workers=min(len(actual_tool_calls), 10)) as executor:
-            # Submit all tool calls
-            future_to_call = {
-                executor.submit(self._call_tool, tool_map[tc.function.name], tc): tc for tc in actual_tool_calls
-            }
+            for tc in actual_tool_calls:
+                tool = tool_map.get(tc.function.name)
+                if not tool:
+                    # Tool doesn't exist - create error result immediately
+                    results.append(ToolCallResult(
+                        call=tc,
+                        error=Exception(f"No tool called {tc.function.name}"),
+                        message={
+                            "role": "tool",
+                            "tool_call_id": tc.id,
+                            "content": f"Error: Unknown tool '{tc.function.name}'. Available tools: {', '.join(tool_map.keys())}",
+                        },
+                    ))
+                else:
+                    # Queue valid tool for execution
+                    tool_call_futures.append(executor.submit(self._call_tool, tool, tc))
 
-            # Collect results as they complete
-            results = []
-            for future in as_completed(future_to_call):
+            # Collect results from valid tool executions as they complete
+            for future in as_completed(tool_call_futures):
                 result = future.result()
                 results.append(result)
 
