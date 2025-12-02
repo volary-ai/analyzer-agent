@@ -32,3 +32,7 @@ test:
 	uv run python -m compileall *.py src/
 	@echo "Running tests..."
 	uv run pytest -v
+
+.PHONY: wheel
+wheel:
+	uv build --wheel -o .
