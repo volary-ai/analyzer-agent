@@ -87,14 +87,14 @@ class TestBackwardsCompatibility:
         assert len(issue.files) == 3
         assert issue.files[0].path == "file.py"
         assert issue.files[0].line_start is None
-        assert issue.files[0].format() == "file.py"
+        assert str(issue.files[0]) == "file.py"
 
         assert issue.files[1].path == "other.py"
         assert issue.files[1].line_start == 123
         assert issue.files[1].line_end is None
-        assert issue.files[1].format() == "other.py:123"
+        assert str(issue.files[1]) == "other.py:123"
 
         assert issue.files[2].path == "third.py"
         assert issue.files[2].line_start == 10
         assert issue.files[2].line_end == 20
-        assert issue.files[2].format() == "third.py:10-20"
+        assert str(issue.files[2]) == "third.py:10-20"

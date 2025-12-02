@@ -67,7 +67,7 @@ def print_issues(analysis: TechDebtAnalysis | EvaluatedTechDebtAnalysis, *, widt
 
     for issue in analysis.issues:
         # Format files list
-        files_display = "\n".join([file.format() for file in issue.files]) if issue.files else "[dim]-[/dim]"
+        files_display = "\n".join([str(file) for file in issue.files]) if issue.files else "[dim]-[/dim]"
 
         if has_evaluation:
             # Format evaluation criteria
@@ -122,7 +122,7 @@ def _render_summary_markdown_row(issue):
         eval_display = "\n".join(f"{_format_eval_key(k)}: {_format_eval_value(k, v)}" for k, v in eval_data.items())
         yield _escape_newlines(eval_display)
 
-    files_display = "\n".join([file.format() for file in issue.files]) if issue.files else "-"
+    files_display = "\n".join([str(file) for file in issue.files]) if issue.files else "-"
     yield _escape_newlines(files_display)
 
 

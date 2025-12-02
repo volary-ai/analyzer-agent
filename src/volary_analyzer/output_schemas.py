@@ -18,8 +18,8 @@ class FileReference(BaseModel):
         description="Optional ending line number (1-indexed, inclusive). If specified, line_start should also be specified.",
     )
 
-    def format(self) -> str:
-        """Format the file reference as a string."""
+    def __str__(self) -> str:
+        """String representation of the file reference."""
         if self.line_start is not None and self.line_end is not None:
             return f"{self.path}:{self.line_start}-{self.line_end}"
         elif self.line_start is not None:
