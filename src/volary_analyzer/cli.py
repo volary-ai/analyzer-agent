@@ -7,11 +7,11 @@ import sys
 from pydantic import ValidationError
 from rich.console import Console
 
-from src.analyze import analyze
-from src.completion_api import CompletionApi
-from src.eval import eval
-from src.output_schemas import EvaluatedTechDebtAnalysis, TechDebtAnalysis
-from src.print_issues import print_issues
+from .analyze import analyze
+from .completion_api import CompletionApi
+from .eval import eval
+from .output_schemas import EvaluatedTechDebtAnalysis, TechDebtAnalysis
+from .print_issues import print_issues
 
 console = Console(stderr=True)
 

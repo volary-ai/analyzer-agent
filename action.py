@@ -9,11 +9,11 @@ from typing import Any
 
 from py_markdown_table.markdown_table import markdown_table
 
-from src.analyze import analyze
-from src.completion_api import CompletionApi
-from src.eval import eval
-from src.output_schemas import EvaluatedTechDebtAnalysis
-from src.print_issues import print_issues
+from src.volary_analyzer.analyze import analyze
+from src.volary_analyzer.completion_api import CompletionApi
+from src.volary_analyzer.eval import eval
+from src.volary_analyzer.output_schemas import EvaluatedTechDebtAnalysis
+from src.volary_analyzer.print_issues import print_issues
 
 DEFAULT_COMPLETION_ENDPOINT = "https://openrouter.ai/api/v1/chat/completions"
 DEFAULT_COORDINATOR_MODEL = "openai/gpt-5.1"
