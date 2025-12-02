@@ -7,12 +7,12 @@ import sys
 from pydantic import ValidationError
 from rich.console import Console
 
-from .tools import web_answers_tool_factory
 from .analyze import analyze
 from .completion_api import CompletionApi
 from .eval import eval
 from .output_schemas import EvaluatedTechDebtAnalysis, TechDebtAnalysis
 from .print_issues import print_issues
+from .tools import web_search_tool_factory
 
 console = Console(stderr=True)
 
@@ -79,6 +79,7 @@ def main() -> int:
                 api=api,
                 analysis=analysis,
                 coordinator_model=args.coordinator_model,
+                search_model=args.delegate_model,
             )
             print_issues(evaluated_analysis)
             api.print_usage_summary()
@@ -98,6 +99,7 @@ def main() -> int:
                 api=api,
                 analysis=analysis,
                 coordinator_model=args.coordinator_model,
+                search_model=args.delegate_model,
             )
             print(evaluated_analysis.model_dump_json(indent=2))
             api.print_usage_summary()
@@ -110,11 +112,9 @@ def main() -> int:
             print_issues(analysis)
         case "search":
             console.print("[bold green]Searching results...[/bold green]")
-            tool = web_answers_tool_factory(api=api, model=args.delegate_model)
-            lines = sys.stdin.read().strip().split('\n', 1)
-            search_term = lines[0] if len(lines) > 0 else ""
-            question = lines[1] if len(lines) > 1 else search_term
-            print(tool(search_term, question))
+            tool = web_search_tool_factory(api=api, model=args.delegate_model)
+            question = sys.stdin.read().strip()
+            print(tool(question))
     return 0
 
 

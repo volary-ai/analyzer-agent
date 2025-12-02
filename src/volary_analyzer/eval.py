@@ -14,15 +14,17 @@ from .output_schemas import (
     TechDebtAnalysis,
 )
 from .prompts import EVAL_PROMPT, EVAL_SYSTEM_PROMPT
+from .tools import web_search_tool_factory
 
 console = Console(stderr=True)  # Output to stderr so stdout is clean for piping
 
 
 def eval(
-    *,
-    analysis: TechDebtAnalysis,
-    api: CompletionApi,
-    coordinator_model: str,
+        *,
+        analysis: TechDebtAnalysis,
+        api: CompletionApi,
+        coordinator_model: str,
+        search_model: str
 ) -> EvaluatedTechDebtAnalysis:
     if not analysis.issues:
         console.print("[yellow]No issues to evaluate[/yellow]")
@@ -38,7 +40,10 @@ def eval(
         model=coordinator_model,
         api=api,
         agent_name="Evaluator",
-        tools=[],
+        tools=[web_search_tool_factory(
+            api=api,
+            model=search_model,
+        )],
     )
 
     console.print("[bold]Running evaluation...[/bold]", style="cyan")
