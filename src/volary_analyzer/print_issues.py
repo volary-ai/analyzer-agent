@@ -92,6 +92,62 @@ def print_issues(analysis: TechDebtAnalysis | EvaluatedTechDebtAnalysis, *, widt
     console.print(f"\n[bold]Total issues found: {len(analysis.issues)}[/bold]")
 
 
+def render_summary_markdown(analysis: TechDebtAnalysis | EvaluatedTechDebtAnalysis) -> str:
+    """Renders a Markdown table (GitHub flavour) containing the given analysis issues."""
+
+    # Header rows
+    if isinstance(analysis, EvaluatedTechDebtAnalysis):
+        rows = [
+            "| Title       | Description    | Action         | Evaluation        | Files              |",
+            "| ----------- | -------------- | -------------- | ----------------- | ------------------ |",
+        ]
+    else:
+        rows = [
+            "| Title       | Description    | Action         | Files              |",
+            "| ----------- | -------------- | -------------- | ------------------ |",
+        ]
+
+    rows += ["| " + " | ".join(_render_summary_markdown_row(issue)) + " |" for issue in analysis.issues]
+    return "\n".join(rows)
+
+
+def _render_summary_markdown_row(issue):
+    yield _escape_newlines(issue.title)
+    yield _escape_newlines(issue.short_description)
+    yield _escape_newlines(issue.recommended_action)
+
+    if evaluation := getattr(issue, "evaluation", None):
+        # Format evaluation criteria
+        eval_data = evaluation.model_dump()
+        eval_display = "\n".join(f"{_format_eval_key(k)}: {_format_eval_value(k, v)}" for k, v in eval_data.items())
+        yield _escape_newlines(eval_display)
+
+    files_display = "\n".join(issue.files) if issue.files else "-"
+    yield _escape_newlines(files_display)
+
+
+def _escape_newlines(str: str) -> str:
+    return str.replace("\n", "<br>")
+
+
+def _format_eval_key(key: str) -> str:
+    # "impact_score" -> "Impact Score"
+    return key.replace("_", " ").title()
+
+
+def _format_eval_value(key: str, value) -> str:
+    # Booleans: Yes/No
+    if isinstance(value, bool):
+        return "Yes" if value else "No"
+
+    if key == "impact_score" or key == "effort":
+        score = str(value).lower()
+        return score.title()
+
+    # Fallback for anything else
+    return str(value)
+
+
 if __name__ == "__main__":
     try:
         stdin_content = sys.stdin.read()

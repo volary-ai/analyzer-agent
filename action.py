@@ -5,15 +5,11 @@ Entrypoint script for the Volary Analyzer Agent GitHub Action.
 
 import os
 import sys
-from typing import Any
-
-from py_markdown_table.markdown_table import markdown_table
 
 from src.volary_analyzer.analyze import analyze
 from src.volary_analyzer.completion_api import CompletionApi
 from src.volary_analyzer.eval import eval
-from src.volary_analyzer.output_schemas import EvaluatedTechDebtAnalysis
-from src.volary_analyzer.print_issues import print_issues
+from src.volary_analyzer.print_issues import print_issues, render_summary_markdown
 
 DEFAULT_COMPLETION_ENDPOINT = "https://openrouter.ai/api/v1/chat/completions"
 DEFAULT_COORDINATOR_MODEL = "openai/gpt-5.1"
@@ -63,7 +59,8 @@ def main() -> int:
             coordinator_model=coordinator_model,
         )
         print_issues(evaluated_analysis)
-        write_summary_markdown(summary_output, evaluated_analysis)
+        with open(summary_output, "a") as f:
+            f.write(render_summary_markdown(evaluated_analysis))
         api.print_usage_summary()
         print("Analysis complete!")
 
@@ -72,54 +69,6 @@ def main() -> int:
         api.print_usage_summary()
         print(f"Error: {e}")
         return 1
-
-
-def write_summary_markdown(summary_output: str, analysis: EvaluatedTechDebtAnalysis):
-    # Check if this is evaluated analysis by checking if first issue has evaluation
-    has_evaluation = isinstance(analysis, EvaluatedTechDebtAnalysis)
-
-    rows = []
-    for issue in analysis.issues:
-        row = {
-            "Title": _escape_newlines(issue.title),
-            "Description": _escape_newlines(issue.short_description),
-            "Action": _escape_newlines(issue.recommended_action),
-        }
-        files_display = "\n".join(issue.files) if issue.files else "-"
-
-        if has_evaluation:
-            # Format evaluation criteria
-            eval_data = issue.evaluation.model_dump()
-            eval_display = "\n".join(f"{_format_eval_key(k)}: {_format_eval_value(k, v)}" for k, v in eval_data.items())
-            row["Evaluation"] = _escape_newlines(eval_display)
-
-        row["Files"] = _escape_newlines(files_display)
-        rows.append(row)
-
-    with open(summary_output, "a") as file:
-        file.write(markdown_table(rows).get_markdown())
-
-
-def _escape_newlines(str: str) -> str:
-    return str.replace("\n", "<br>")
-
-
-def _format_eval_key(key: str) -> str:
-    # "impact_score" -> "Impact Score"
-    return key.replace("_", " ").title()
-
-
-def _format_eval_value(key: str, value: Any) -> str:
-    # Booleans: Yes/No
-    if isinstance(value, bool):
-        return "Yes" if value else "No"
-
-    if key == "impact_score" or key == "effort":
-        score = str(value).lower()
-        return score.title()
-
-    # Fallback for anything else
-    return str(value)
 
 
 if __name__ == "__main__":
