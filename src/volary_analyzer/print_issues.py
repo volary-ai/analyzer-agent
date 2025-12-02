@@ -104,7 +104,10 @@ def _highlight_files(text: str) -> str:
 
 
 def render_summary_markdown(analysis: TechDebtAnalysis | EvaluatedTechDebtAnalysis, repo: str="", revision:str="") -> str:
-    """Renders a Markdown table (GitHub flavour) containing the given analysis issues."""
+    """Renders a Markdown table (GitHub flavour) containing the given analysis issues.
+
+    If repo and revision are provided, it will render GitHub source links for files.
+    """
 
     # Header rows
     if isinstance(analysis, EvaluatedTechDebtAnalysis):

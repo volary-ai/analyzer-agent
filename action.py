@@ -47,6 +47,10 @@ def main() -> int:
         endpoint=completions_endpoint or DEFAULT_COMPLETION_ENDPOINT,
     )
 
+    # Github meta-info
+    revision = os.environ.get("GITHUB_SHA")
+    repo = os.environ.get("GITHUB_REPOSITORY")
+
     try:
         analysis = analyze(
             api=api,
@@ -60,7 +64,7 @@ def main() -> int:
         )
         print_issues(evaluated_analysis)
         with open(summary_output, "a") as f:
-            f.write(render_summary_markdown(evaluated_analysis))
+            f.write(render_summary_markdown(evaluated_analysis, repo=repo, revision=revision))
         api.print_usage_summary()
         print("Analysis complete!")
 
