@@ -5,12 +5,10 @@ Entrypoint script for the Volary Analyzer Agent GitHub Action.
 
 import os
 import sys
-from typing import Any
 
 from src.volary_analyzer.analyze import analyze
 from src.volary_analyzer.completion_api import CompletionApi
 from src.volary_analyzer.eval import eval
-from src.volary_analyzer.output_schemas import EvaluatedTechDebtAnalysis
 from src.volary_analyzer.print_issues import print_issues, render_summary_markdown
 
 DEFAULT_COMPLETION_ENDPOINT = "https://openrouter.ai/api/v1/chat/completions"

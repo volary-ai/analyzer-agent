@@ -116,9 +116,9 @@ def _render_summary_markdown_row(issue):
     yield _escape_newlines(issue.short_description)
     yield _escape_newlines(issue.recommended_action)
 
-    if evaluation := getattr(issue, "evaluation"):
+    if evaluation := getattr(issue, "evaluation", None):
         # Format evaluation criteria
-        eval_data = issue.evaluation.model_dump()
+        eval_data = evaluation.model_dump()
         eval_display = "\n".join(f"{_format_eval_key(k)}: {_format_eval_value(k, v)}" for k, v in eval_data.items())
         yield _escape_newlines(eval_display)
 
