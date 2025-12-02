@@ -1,0 +1,1 @@
+- Don't add comments explaining what the next line does (e.g. `#sort the list\n sorted(list)`). Comments should only be added if the code is surprising in some way e.g. `# filter out the actual tool calls (psudo-calls don't actually run anything)`.
