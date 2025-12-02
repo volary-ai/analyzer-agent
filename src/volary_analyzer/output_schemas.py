@@ -97,6 +97,7 @@ class EvaluatedTechDebtIssue(TechDebtIssue):
         description="any issue IDs that this issue is a duplicate of. You should use the query_issues() tool to find related issues."
     )
 
+
 class EvaluatedTechDebtAnalysis(BaseModel):
     """Container for tech debt analysis results with evaluations."""
 

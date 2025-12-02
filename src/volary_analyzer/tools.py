@@ -1,13 +1,10 @@
 import glob as glob_module
-import os
-import shutil
 import subprocess
 from collections.abc import Callable
 from pathlib import Path
 
 import chromadb
 import pathspec
-import requests
 
 from .agent import Agent
 from .completion_api import CompletionApi
@@ -188,6 +185,7 @@ def query_issues_factory(collection: chromadb.Collection) -> Callable[[list[str]
     Returns:
         Function that performs semantic search over the issue collection
     """
+
     def query_issues(queries: list[str]) -> str:
         """
         Search GitHub issues and PRs using semantic vector search.
@@ -215,15 +213,16 @@ def query_issues_factory(collection: chromadb.Collection) -> Callable[[list[str]
             Formatted string containing top matching issues with titles, URLs, and content
         """
         results = collection.query(query_texts=queries, n_results=5)
-        ret:list[str] = []
+        ret: list[str] = []
         for i, (doc, distance, doc_id, meta) in enumerate(
-                zip(
-                    results["documents"][0],
-                    results["distances"][0],
-                    results["ids"][0],
-                    results["metadatas"][0], strict=False,
-                ),
-                1,
+            zip(
+                results["documents"][0],
+                results["distances"][0],
+                results["ids"][0],
+                results["metadatas"][0],
+                strict=False,
+            ),
+            1,
         ):
             ret.append(f"===== {i}. [ID: {doc_id}] (distance: {distance:.4f}) ======")
             ret.append(f"   Issue #{meta['number']} ({meta['state'].upper()}): {meta['title']}")
@@ -232,8 +231,8 @@ def query_issues_factory(collection: chromadb.Collection) -> Callable[[list[str]
 
         return "\n".join(ret)
 
-
     return query_issues
+
 
 def delegate_tool_factory(api: CompletionApi, model: str, tools: list[Callable], repo_context: str) -> Callable:
     def delegate_task(task: str, description: str):

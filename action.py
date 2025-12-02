@@ -45,6 +45,12 @@ def main() -> int:
         delegate_model = DEFAULT_DELEGATE_MODEL
 
     completions_endpoint = os.environ.get("INPUT_COMPLETIONS-ENDPOINT")
+
+    cache_dir = os.environ.get("INPUT_CACHE-DIR")
+    if not cache_dir:
+        # Default to workspace cache directory for GitHub Actions
+        cache_dir = os.path.join(workspace, ".cache", "volary-analyzer")
+
     # Create shared CompletionApi instance for usage tracking across all agents
     api = CompletionApi(
         api_key=completions_api_key,
@@ -61,6 +67,7 @@ def main() -> int:
             api=api,
             analysis=analysis,
             coordinator_model=coordinator_model,
+            cache_dir=cache_dir,
         )
         print_issues(evaluated_analysis)
         write_summary_markdown(summary_output, evaluated_analysis)

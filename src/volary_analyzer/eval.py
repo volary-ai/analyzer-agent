@@ -1,12 +1,13 @@
 """
 Evaluation agent - scores technical debt issues for relevance and actionability.
 """
+
 import chromadb
 from rich.console import Console
 
 from .agent import Agent
 from .completion_api import CompletionApi
-from .github import github_auth, GitHubClient, get_github_repo
+from .github_helper import get_github_client, get_github_repo
 from .output_schemas import (
     EvaluatedTechDebtAnalysis,
     EvaluatedTechDebtIssue,
@@ -26,6 +27,7 @@ def eval(
     analysis: TechDebtAnalysis,
     api: CompletionApi,
     coordinator_model: str,
+    cache_dir: str,
 ) -> EvaluatedTechDebtAnalysis:
     if not analysis.issues:
         console.print("[yellow]No issues to evaluate[/yellow]")
@@ -37,16 +39,18 @@ def eval(
     )
 
     tools = []
+    github_issue_instruction = ""
     if repo_path := get_github_repo():
-        chroma_client = chromadb.PersistentClient(path="./chroma_db")
-        gh_client = GitHubClient(token=github_auth(), repo_path=repo_path)
-        collection = github_vector_db(chroma_client, gh_client)
-        tools.append(
-            query_issues_factory(collection)
-        )
+        chroma_client = chromadb.PersistentClient(path=cache_dir)
+        gh_client = get_github_client()
+        collection = github_vector_db(chroma_client, gh_client, repo_path)
+        tools.append(query_issues_factory(collection))
+        github_issue_instruction = "You MUST search for related issues with query_issues() to make sure you're not reporting issues that have already been considered."
+    else:
+        console.print("I notice this isn't a GitHub repo. We have no access to your issues so may report duplicates.")
 
     eval_agent = Agent(
-        instruction=EVAL_SYSTEM_PROMPT,
+        instruction=EVAL_SYSTEM_PROMPT.format(github_issue_instruction=github_issue_instruction),
         model=coordinator_model,
         api=api,
         agent_name="Evaluator",
