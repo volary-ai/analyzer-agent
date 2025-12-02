@@ -11,7 +11,7 @@ class TestBackwardsCompatibility:
 
     def test_parse_all_testdata_files(self) -> None:
         """Test that all JSON files in testdata/ can be parsed successfully."""
-        testdata_dir = Path("src/test/testdata")
+        testdata_dir = Path("src/volary_analyzer/test/testdata")
         json_files = list(testdata_dir.glob("*.json"))
 
         assert len(json_files) > 0, "No JSON files found in testdata/"
