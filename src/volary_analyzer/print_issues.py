@@ -7,7 +7,7 @@ from typing import Any
 from rich.console import Console
 from rich.table import Table
 
-from .output_schemas import EvaluatedTechDebtAnalysis, TechDebtAnalysis
+from .output_schemas import EvaluatedTechDebtAnalysis, TechDebtAnalysis, FileReference
 
 console = Console(stderr=True)
 
@@ -136,7 +136,7 @@ def _render_summary_markdown_row(issue, repo: str="", revision:str=""):
         eval_display = "\n".join(f"{_format_eval_key(k)}: {_format_eval_value(k, v)}" for k, v in eval_data.items())
         yield _escape_newlines(eval_display)
 
-    files_display = "\n".join([str(file) for file in issue.files]) if issue.files else "-"
+    files_display = "\n".join([_file_source_link(file, repo, revision) for file in issue.files]) if issue.files else "-"
     yield _escape_newlines(files_display)
 
 
@@ -146,15 +146,29 @@ def _escape_newlines(str: str) -> str:
 
 def _add_source_links(text: str, repo: str="", revision:str=""):
     """Add Markdown links to source files found in the given text."""
-    return _file_search_re.sub(lambda m: _markdown_link(m, repo, revision) if repo and revision else m.group(0), text)
+    return _file_search_re.sub(lambda m: _markdown_link(
+        # The sub-groups occur in two places in the regex so we have to deal with both
+        filename=m.group(1) or m.group(4),
+        start=m.group(2) or m.group(5),
+        end=m.group(3) or m.group(6),
+        repo=repo,
+        revision=revision,
+    ) if repo and revision else m.group(0), text)
 
 
-def _markdown_link(m, repo: str, revision:str):
-    """Render a Markdown link from a regex match."""
-    # The sub-groups occur in two places in the regex so we have to deal with both
-    filename = m.group(1) or m.group(4)
-    start = m.group(2) or m.group(5)
-    end = m.group(3) or m.group(6)
+def _file_source_link(ref: FileReference, repo: str="", revision: str=""):
+    """Render a Markdown link from one of our file objects."""
+    return _markdown_link(
+        filename=ref.path,
+        start=ref.line_start,
+        end=ref.line_end,
+        repo=repo,
+        revision=revision,
+    ) if repo and revision else str(ref)
+
+
+def _markdown_link(filename: str, start: str | None, end: str | None, repo: str, revision:str):
+    """Render a Markdown link from a set of components."""
     query = f"#L{start}-{end}" if end else f"#L{start}" if start else ""
     text = f"{filename}:{start}-{end}" if end else f"{filename}:{start}" if start else filename
     return f"[{text}](https://github.com/{repo}/blob/{revision}/{filename}{query})"
