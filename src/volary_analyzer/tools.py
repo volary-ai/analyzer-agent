@@ -87,7 +87,7 @@ def _get_gitignore_spec():
     return _gitignore_spec
 
 
-def read_file(path: str, from_line: str = None, to_line: str = None) -> str:
+def read_file(path: str, from_line: int = None, to_line: int = None) -> str:
     """
     Reads the contents of the file at the provider path (relative to the working directory).
     Includes git blame annotations showing line numbers and dates when each line was changed.
@@ -118,11 +118,11 @@ def read_file(path: str, from_line: str = None, to_line: str = None) -> str:
 
             # Apply line range filtering
             if from_line is not None or to_line is not None:
-                start = (int(from_line) - 1) if from_line is not None else 0
-                end = int(to_line) if to_line is not None else len(lines)
+                start = (from_line - 1) if from_line is not None else 0
+                end = to_line if to_line is not None else len(lines)
                 lines = lines[start:end]
                 # Adjust line numbers to match the actual line numbers in the file
-                start_num = int(from_line) if from_line is not None else 1
+                start_num = from_line if from_line is not None else 1
                 return "\n".join(f"{i:4d}→{line.rstrip()}" for i, line in enumerate(lines, start=start_num))
 
             return "\n".join(f"{i:4d}→{line.rstrip()}" for i, line in enumerate(lines, start=1))

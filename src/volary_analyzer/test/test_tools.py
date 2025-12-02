@@ -33,7 +33,7 @@ class TestReadFile:
         original_dir = os.getcwd()
         try:
             os.chdir(tmp_path)
-            result = read_file("test.txt", from_line="2", to_line="4")
+            result = read_file("test.txt", from_line=2, to_line=4)
             lines = result.split("\n")
             # Should only have lines 2-4
             assert len([line for line in lines if line.strip()]) >= 3
