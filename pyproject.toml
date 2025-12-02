@@ -17,7 +17,6 @@ dev = [
     "pytest==8.3.4",
     "ruff==0.8.4",
 ]
-
 [project.scripts]
 volary-analyzer = "cli:main"
 
@@ -27,6 +26,7 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src"]
+exclude = ["test"]
 
 [tool.ruff]
 line-length = 120
