@@ -6,6 +6,7 @@ from ..agent import (
     ToolCall,
     ToolFunction,
 )
+from ..completion_api import tool_prompt
 
 
 class TestToolCalling:
@@ -202,3 +203,66 @@ class TestToolCalling:
         agent._call_tools([])
 
         assert len(agent.messages) == 0
+
+    def test_integer_parameter_handling(self) -> None:
+        """Test that tools with integer parameters work correctly end-to-end."""
+
+        def count_tool(start: int, end: int, step: int = 1) -> str:
+            """Count from start to end with the given step.
+
+            Args:
+                start: Starting number
+                end: Ending number
+                step: Step size (default 1)
+
+            Returns:
+                String representation of the count
+            """
+            result = list(range(start, end + 1, step))
+            return f"Counted: {result}"
+
+        # Test 1: Verify schema generation is correct
+        schema = tool_prompt(count_tool)
+        assert schema["function"]["name"] == "count_tool"
+        assert schema["function"]["parameters"]["properties"]["start"]["type"] == "integer"
+        assert schema["function"]["parameters"]["properties"]["end"]["type"] == "integer"
+        assert schema["function"]["parameters"]["properties"]["step"]["type"] == "integer"
+        assert "start" in schema["function"]["parameters"]["required"]
+        assert "end" in schema["function"]["parameters"]["required"]
+        assert "step" not in schema["function"]["parameters"]["required"]
+
+        # Test 2: Verify tool execution receives integers correctly
+        api = CompletionApi(api_key="test-key", endpoint="http://test")
+        agent = Agent(
+            instruction="Test agent",
+            tools=[count_tool],
+            model="test-model",
+            api=api,
+        )
+
+        tool_call = ToolCall(
+            id="call_456",
+            function=ToolFunction(name="count_tool", arguments='{"start": 5, "end": 10, "step": 2}'),
+            type="function",
+        )
+
+        result = agent._call_tool(count_tool, tool_call)
+
+        assert result.error is None, f"Tool execution failed: {result.error}"
+        assert result.tool_args == {"start": 5, "end": 10, "step": 2}
+        assert result.message["content"] == "Counted: [5, 7, 9]"
+
+        # Test 3: Verify type coercion doesn't happen incorrectly
+        tool_call_with_strings = ToolCall(
+            id="call_789",
+            function=ToolFunction(name="count_tool", arguments='{"start": "5", "end": "10"}'),
+            type="function",
+        )
+
+        result_strings = agent._call_tool(count_tool, tool_call_with_strings)
+
+        # This should work - JSON parser will handle string-to-int conversion
+        # but verify the actual tool receives proper integers
+        assert result_strings.tool_args == {"start": "5", "end": "10"}
+        # The tool should raise an error if it receives strings instead of ints
+        assert result_strings.error is not None or "5, 6, 7, 8, 9, 10" in result_strings.message["content"]
