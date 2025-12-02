@@ -18,7 +18,7 @@ dev = [
     "ruff==0.8.4",
 ]
 [project.scripts]
-volary-analyzer = "cli:main"
+volary-analyzer = "volary_analyzer.cli:main"
 
 [build-system]
 requires = ["uv_build"]
