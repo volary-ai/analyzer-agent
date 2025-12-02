@@ -11,7 +11,7 @@ from .analyze import analyze
 from .completion_api import CompletionApi
 from .eval import eval
 from .output_schemas import EvaluatedTechDebtAnalysis, TechDebtAnalysis
-from .print_issues import print_issues
+from .print_issues import print_issues, render_summary_markdown
 
 console = Console(stderr=True)
 
@@ -106,6 +106,7 @@ def main() -> int:
             except ValidationError:
                 analysis = TechDebtAnalysis.model_validate_json(raw)
             print_issues(analysis)
+            print(render_summary_markdown(analysis))
     return 0
 
 

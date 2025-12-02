@@ -1,0 +1,38 @@
+{
+  "issues": [
+    {
+      "title": "Test title",
+        "short_description": "Go mod: go.mod:59\nCode file: src/cli/logging.go\nCode file with line: src/cli/logging/logging.go:64\n Code file with multiple lines: tools/build_langserver/langserver_main.go:43-54",
+      "impact": "Not specified",
+      "recommended_action": "",
+      "files": [
+        {
+          "path": "go.mod",
+          "line_start": 59,
+          "line_end": 59
+        },
+        {
+          "path": "src/cli/logging.go"
+        },
+        {
+          "path": "src/cli/logging/logging.go",
+          "line_start": 64,
+          "line_end": 64
+        },
+        {
+          "path": "tools/build_langserver/langserver_main.go",
+          "line_start": 43,
+          "line_end": 54
+        }
+      ],
+      "evaluation": {
+        "objective": false,
+        "actionable": true,
+        "production": true,
+        "local": false,
+        "impact_score": "low",
+        "effort": "high"
+      }
+    }
+  ]
+}

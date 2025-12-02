@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import json
+import re
 import sys
 from typing import Any
 
@@ -9,6 +10,11 @@ from rich.table import Table
 from .output_schemas import EvaluatedTechDebtAnalysis, TechDebtAnalysis
 
 console = Console(stderr=True)
+
+# Recognises a file with optional lines on the end
+# e.g. src/core/logging.go:53-65
+# or   go.mod:59
+_file_search_re = re.compile(r"(?:([^\s`,:;]+/[^\s`,:;]+)(?::([0-9]+))?(?:-([0-9]+))?|([^\s`,:;]+):([0-9]+)(?:-([0-9]+))?)")
 
 
 def _format_eval_key(key: str) -> str:
@@ -75,16 +81,16 @@ def print_issues(analysis: TechDebtAnalysis | EvaluatedTechDebtAnalysis, *, widt
             eval_display = "\n".join(f"{_format_eval_key(k)}: {_format_eval_value(k, v)}" for k, v in eval_data.items())
             table.add_row(
                 issue.title,
-                issue.short_description + "\n",
-                issue.recommended_action + "\n",
+                _highlight_files(issue.short_description) + "\n",
+                _highlight_files(issue.recommended_action) + "\n",
                 eval_display,
                 files_display,
             )
         else:
             table.add_row(
                 issue.title,
-                issue.short_description + "\n",
-                issue.recommended_action + "\n",
+                _highlight_files(issue.short_description) + "\n",
+                _highlight_files(issue.recommended_action) + "\n",
                 files_display,
             )
 
@@ -92,7 +98,12 @@ def print_issues(analysis: TechDebtAnalysis | EvaluatedTechDebtAnalysis, *, widt
     console.print(f"\n[bold]Total issues found: {len(analysis.issues)}[/bold]")
 
 
-def render_summary_markdown(analysis: TechDebtAnalysis | EvaluatedTechDebtAnalysis) -> str:
+def _highlight_files(text: str) -> str:
+    """Highlights any files in the given text in cyan."""
+    return _file_search_re.sub(lambda m: "[cyan]" + m.group(0) + "[/cyan]", text)
+
+
+def render_summary_markdown(analysis: TechDebtAnalysis | EvaluatedTechDebtAnalysis, repo: str="", revision:str="") -> str:
     """Renders a Markdown table (GitHub flavour) containing the given analysis issues."""
 
     # Header rows
@@ -107,14 +118,14 @@ def render_summary_markdown(analysis: TechDebtAnalysis | EvaluatedTechDebtAnalys
             "| ----------- | -------------- | -------------- | ------------------ |",
         ]
 
-    rows += ["| " + " | ".join(_render_summary_markdown_row(issue)) + " |" for issue in analysis.issues]
+    rows += ["| " + " | ".join(_render_summary_markdown_row(issue, repo, revision)) + " |" for issue in analysis.issues]
     return "\n".join(rows)
 
 
-def _render_summary_markdown_row(issue):
+def _render_summary_markdown_row(issue, repo: str="", revision:str=""):
     yield _escape_newlines(issue.title)
-    yield _escape_newlines(issue.short_description)
-    yield _escape_newlines(issue.recommended_action)
+    yield _escape_newlines(_add_source_links(issue.short_description, repo, revision))
+    yield _escape_newlines(_add_source_links(issue.recommended_action, repo, revision))
 
     if evaluation := getattr(issue, "evaluation", None):
         # Format evaluation criteria
@@ -128,6 +139,22 @@ def _render_summary_markdown_row(issue):
 
 def _escape_newlines(str: str) -> str:
     return str.replace("\n", "<br>")
+
+
+def _add_source_links(text: str, repo: str="", revision:str=""):
+    """Add Markdown links to source files found in the given text."""
+    return _file_search_re.sub(lambda m: _markdown_link(m, repo, revision) if repo and revision else m.group(0), text)
+
+
+def _markdown_link(m, repo: str, revision:str):
+    """Render a Markdown link from a regex match."""
+    # The sub-groups occur in two places in the regex so we have to deal with both
+    filename = m.group(1) or m.group(4)
+    start = m.group(2) or m.group(5)
+    end = m.group(3) or m.group(6)
+    query = f"#L{start}-{end}" if end else f"#L{start}" if start else ""
+    text = f"{filename}:{start}-{end}" if end else f"{filename}:{start}" if start else filename
+    return f"[{text}](https://github.com/{repo}/blob/{revision}/{filename}{query})"
 
 
 def _format_eval_key(key: str) -> str:
