@@ -3,7 +3,7 @@
 import json
 from pathlib import Path
 
-from ..output_schemas import TechDebtAnalysis, TechDebtIssue
+from ..output_schemas import FileReference, TechDebtAnalysis, TechDebtIssue
 
 
 class TestBackwardsCompatibility:
@@ -65,4 +65,32 @@ class TestBackwardsCompatibility:
         assert issue.short_description == "Brief description"
         assert issue.impact == "High impact"
         assert issue.recommended_action == "Fix it in file.py:123"
-        assert issue.files == ["file.py"]
+        assert len(issue.files) == 1
+        assert issue.files[0].path == "file.py"
+        assert issue.files[0].line_start is None
+        assert issue.files[0].line_end is None
+
+    def test_files_string_parsing(self) -> None:
+        """Test that string file references are parsed into FileReference objects."""
+        data = {
+            "title": "Test Issue",
+            "short_description": "Test",
+            "files": ["file.py", "other.py:123", "third.py:10-20"],
+        }
+
+        issue = TechDebtIssue.model_validate(data)
+
+        assert len(issue.files) == 3
+        assert issue.files[0].path == "file.py"
+        assert issue.files[0].line_start is None
+        assert issue.files[0].format() == "file.py"
+
+        assert issue.files[1].path == "other.py"
+        assert issue.files[1].line_start == 123
+        assert issue.files[1].line_end is None
+        assert issue.files[1].format() == "other.py:123"
+
+        assert issue.files[2].path == "third.py"
+        assert issue.files[2].line_start == 10
+        assert issue.files[2].line_end == 20
+        assert issue.files[2].format() == "third.py:10-20"

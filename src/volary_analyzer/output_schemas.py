@@ -2,7 +2,30 @@
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+
+class FileReference(BaseModel):
+    """Reference to a file or specific lines within a file."""
+
+    path: str = Field(description="Path to the file relative to repository root")
+    line_start: int | None = Field(
+        default=None,
+        description="Optional starting line number (1-indexed). If specified, line_end should also be specified.",
+    )
+    line_end: int | None = Field(
+        default=None,
+        description="Optional ending line number (1-indexed, inclusive). If specified, line_start should also be specified.",
+    )
+
+    def format(self) -> str:
+        """Format the file reference as a string."""
+        if self.line_start is not None and self.line_end is not None:
+            return f"{self.path}:{self.line_start}-{self.line_end}"
+        elif self.line_start is not None:
+            return f"{self.path}:{self.line_start}"
+        else:
+            return self.path
 
 
 class TechDebtIssue(BaseModel):
@@ -29,10 +52,37 @@ class TechDebtIssue(BaseModel):
         "response might be '1) Remove foo parameter from bar() in baz.py:123, 2) update usage in x.py, "
         "3) update usage in y.py'",
     )
-    files: list[str] | None = Field(
+    files: list[FileReference] | None = Field(
         default=None,
-        description="Optional: a list of files related to the issue. This can refer to the whole file i.e. just main.go or a specific line i.e. main.go:12",
+        description="Optional: list of files related to this issue. Include specific line ranges when the issue is localized to particular code sections.",
     )
+
+    @field_validator("files", mode="before")
+    @classmethod
+    def parse_file_strings(cls, v):
+        """Convert string file references to FileReference objects for backward compatibility."""
+        if v is None:
+            return v
+
+        result = []
+        for item in v:
+            if isinstance(item, str):
+                if ":" in item:
+                    path, rest = item.split(":", 1)
+                    rest = rest.strip()
+                    try:
+                        if "-" in rest:
+                            start, end = rest.split("-", 1)
+                            result.append(FileReference(path=path, line_start=int(start), line_end=int(end)))
+                        else:
+                            result.append(FileReference(path=path, line_start=int(rest)))
+                    except ValueError:
+                        result.append(FileReference(path=item))
+                else:
+                    result.append(FileReference(path=item))
+            else:
+                result.append(item)
+        return result
 
 
 class TechDebtAnalysis(BaseModel):
@@ -96,3 +146,18 @@ class EvaluatedTechDebtAnalysis(BaseModel):
     """Container for tech debt analysis results with evaluations."""
 
     issues: list[EvaluatedTechDebtIssue]
+
+
+class IssueWithContext(BaseModel):
+    """Tech debt issue with file contents for evaluation."""
+
+    issue: TechDebtIssue
+    file_contents: dict[str, str] = Field(
+        description="Map of file paths to their contents. Only includes files referenced in the issue."
+    )
+
+
+class EvaluationInput(BaseModel):
+    """Input structure for evaluation agent with file context."""
+
+    issues: list[IssueWithContext]

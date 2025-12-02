@@ -212,5 +212,13 @@ Only a single pull request required to implement
 """
 
 EVAL_PROMPT = """
-Evaluate the suggestions in the following JSON structure: %s
+Evaluate the suggestions in the following JSON structure.
+
+Each issue includes:
+- issue: The technical debt issue details (title, description, impact, recommended_action, files)
+- file_contents: A map of file paths to their actual contents, so you can review the code being referenced
+
+Use the file contents to better understand the context and validity of each suggestion.
+
+JSON structure: %s
 """

@@ -11,12 +11,39 @@ from .output_schemas import (
     EvaluatedTechDebtIssue,
     Evaluation,
     EvaluationCriteria,
-    TechDebtAnalysis,
+    EvaluationInput,
+    IssueWithContext,
+    TechDebtAnalysis, TechDebtIssue,
 )
+from .tools import read_file
 from .prompts import EVAL_PROMPT, EVAL_SYSTEM_PROMPT
 
 console = Console(stderr=True)  # Output to stderr so stdout is clean for piping
 
+
+def contextualise_issue(issue: TechDebtIssue) -> IssueWithContext:
+    file_contents = {}
+    if issue.files:
+        for file_ref in issue.files:
+            try:
+                from_line = None
+                to_line = None
+                if file_ref.line_start is not None:
+                    from_line = str(max(1, file_ref.line_start - 5))
+                if file_ref.line_end is not None:
+                    to_line = str(file_ref.line_end + 5)
+
+                content = read_file(
+                    file_ref.path,
+                    from_line=from_line,
+                    to_line=to_line,
+                )
+                file_contents[file_ref.path] = content
+            except Exception as e:
+                console.print(f"[yellow]Warning: Could not read {file_ref.path}: {e}[/yellow]")
+                file_contents[file_ref.path] = f"Error reading file: {e}"
+
+    return IssueWithContext(issue=issue, file_contents=file_contents)
 
 def eval(
     *,
@@ -33,6 +60,13 @@ def eval(
         style="cyan",
     )
 
+    console.print("[bold]Building context with file contents...[/bold]", style="cyan")
+    issues_with_context = []
+    for issue in analysis.issues:
+        issues_with_context.append(contextualise_issue(issue))
+
+    evaluation_input = EvaluationInput(issues=issues_with_context)
+
     eval_agent = Agent(
         instruction=EVAL_SYSTEM_PROMPT,
         model=coordinator_model,
@@ -43,7 +77,7 @@ def eval(
 
     console.print("[bold]Running evaluation...[/bold]", style="cyan")
     evaluations = eval_agent.run(
-        prompt=EVAL_PROMPT % analysis.model_dump_json(indent=2),
+        prompt=EVAL_PROMPT % evaluation_input.model_dump_json(indent=2),
         output_class=Evaluation,
     )
 
