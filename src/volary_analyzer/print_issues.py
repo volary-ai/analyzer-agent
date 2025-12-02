@@ -7,14 +7,16 @@ from typing import Any
 from rich.console import Console
 from rich.table import Table
 
-from .output_schemas import EvaluatedTechDebtAnalysis, TechDebtAnalysis, FileReference
+from .output_schemas import EvaluatedTechDebtAnalysis, FileReference, TechDebtAnalysis
 
 console = Console(stderr=True)
 
 # Recognises a file with optional lines on the end
 # e.g. src/core/logging.go:53-65
 # or   go.mod:59
-_file_search_re = re.compile(r"(?:([^\s`,:;]+/[^\s`,:;]+)(?::([0-9]+))?(?:-([0-9]+))?|([^\s`,:;]+):([0-9]+)(?:-([0-9]+))?)")
+_file_search_re = re.compile(
+    r"(?:([^\s`,:;]+/[^\s`,:;]+)(?::([0-9]+))?(?:-([0-9]+))?|([^\s`,:;]+):([0-9]+)(?:-([0-9]+))?)"
+)
 
 
 def _format_eval_key(key: str) -> str:
@@ -103,7 +105,9 @@ def _highlight_files(text: str) -> str:
     return _file_search_re.sub(lambda m: "[cyan]" + m.group(0) + "[/cyan]", text)
 
 
-def render_summary_markdown(analysis: TechDebtAnalysis | EvaluatedTechDebtAnalysis, repo: str="", revision:str="") -> str:
+def render_summary_markdown(
+    analysis: TechDebtAnalysis | EvaluatedTechDebtAnalysis, repo: str = "", revision: str = ""
+) -> str:
     """Renders a Markdown table (GitHub flavour) containing the given analysis issues.
 
     If repo and revision are provided, it will render GitHub source links for files.
@@ -125,7 +129,7 @@ def render_summary_markdown(analysis: TechDebtAnalysis | EvaluatedTechDebtAnalys
     return "\n".join(rows)
 
 
-def _render_summary_markdown_row(issue, repo: str="", revision:str=""):
+def _render_summary_markdown_row(issue, repo: str = "", revision: str = ""):
     yield _escape_newlines(issue.title)
     yield _escape_newlines(_add_source_links(issue.short_description, repo, revision))
     yield _escape_newlines(_add_source_links(issue.recommended_action, repo, revision))
@@ -144,30 +148,39 @@ def _escape_newlines(str: str) -> str:
     return str.replace("\n", "<br>")
 
 
-def _add_source_links(text: str, repo: str="", revision:str=""):
+def _add_source_links(text: str, repo: str = "", revision: str = ""):
     """Add Markdown links to source files found in the given text."""
-    return _file_search_re.sub(lambda m: _markdown_link(
-        # The sub-groups occur in two places in the regex so we have to deal with both
-        filename=m.group(1) or m.group(4),
-        start=m.group(2) or m.group(5),
-        end=m.group(3) or m.group(6),
-        repo=repo,
-        revision=revision,
-    ) if repo and revision else m.group(0), text)
+    return _file_search_re.sub(
+        lambda m: _markdown_link(
+            # The sub-groups occur in two places in the regex so we have to deal with both
+            filename=m.group(1) or m.group(4),
+            start=m.group(2) or m.group(5),
+            end=m.group(3) or m.group(6),
+            repo=repo,
+            revision=revision,
+        )
+        if repo and revision
+        else m.group(0),
+        text,
+    )
 
 
-def _file_source_link(ref: FileReference, repo: str="", revision: str=""):
+def _file_source_link(ref: FileReference, repo: str = "", revision: str = ""):
     """Render a Markdown link from one of our file objects."""
-    return _markdown_link(
-        filename=ref.path,
-        start=ref.line_start,
-        end=ref.line_end,
-        repo=repo,
-        revision=revision,
-    ) if repo and revision else str(ref)
+    return (
+        _markdown_link(
+            filename=ref.path,
+            start=ref.line_start,
+            end=ref.line_end,
+            repo=repo,
+            revision=revision,
+        )
+        if repo and revision
+        else str(ref)
+    )
 
 
-def _markdown_link(filename: str, start: str | None, end: str | None, repo: str, revision:str):
+def _markdown_link(filename: str, start: str | None, end: str | None, repo: str, revision: str):
     """Render a Markdown link from a set of components."""
     query = f"#L{start}-{end}" if end else f"#L{start}" if start else ""
     text = f"{filename}:{start}-{end}" if end else f"{filename}:{start}" if start else filename
