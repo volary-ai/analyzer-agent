@@ -1,6 +1,5 @@
 """Web search functionality using DuckDuckGo."""
 
-
 import requests
 from bs4 import BeautifulSoup
 from ddgs import DDGS
@@ -31,9 +30,9 @@ def ddg_search(query: str, max_results: int = 10) -> str:
         for i, result in enumerate(results, 1):
             output.append(f"[{i}] {result['title']}")
             output.append(f"    URL: {result['href']}")
-            if result.get('body'):
+            if result.get("body"):
                 # Include snippet if available
-                snippet = result['body'][:200] + "..." if len(result['body']) > 200 else result['body']
+                snippet = result["body"][:200] + "..." if len(result["body"]) > 200 else result["body"]
                 output.append(f"    Snippet: {snippet}")
             output.append("")  # Empty line between results
 
@@ -85,43 +84,3 @@ def fetch_page_content(url: str, max_length: int = 10000) -> str:
         return text
     except Exception as e:
         return f"[Error fetching content: {e}]"
-
-
-def text(query:str) -> str:
-    """
-    Search the web using DuckDuckGo and return formatted results with page content.
-
-    This tool searches the internet for information and fetches the actual content
-    of the top results. Use this when you need up-to-date information from the web
-    that isn't available in the codebase.
-
-    Usage notes:
-    - Good for: latest API versions, current best practices, documentation lookups
-    - Returns up to 5 search results with full page content
-    - Each result includes the page title, URL, and extracted text content
-
-    Examples:
-        web_search("What is the latest Go version?")
-        web_search("Python asyncio best practices 2024")
-        web_search("KEDA ScaledObject API version")
-
-    Args:
-        query: The search query
-
-    Returns:
-        Formatted string with search results and page content
-    """
-    ddgs = DDGS()
-    results = ddgs.text(query, max_results=10, region="wt-wt")
-
-    context_parts = []
-    for i, result in enumerate(results, 1):
-        context_parts.append(f"\n[{i}] {result['title']}")
-        context_parts.append(f"URL: {result['href']}")
-
-        # Fetch actual page content
-        content = fetch_page_content(result["href"])
-        context_parts.append(f"Content: {content}\n")
-
-    return "\n".join(context_parts)
-

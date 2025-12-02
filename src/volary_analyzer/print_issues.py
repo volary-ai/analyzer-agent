@@ -57,6 +57,7 @@ def print_issues(analysis: TechDebtAnalysis | EvaluatedTechDebtAnalysis, *, widt
     table.add_column("Title", style="cyan bold", width=30, no_wrap=False)
     table.add_column("Description", style="white", width=40, no_wrap=False)
     table.add_column("Action", style="green", width=35, no_wrap=False)
+    table.add_column("Impact", style="green", width=35, no_wrap=False)
 
     # Check if this is evaluated analysis by checking if first issue has evaluation
     has_evaluation = isinstance(analysis, EvaluatedTechDebtAnalysis)
@@ -77,6 +78,7 @@ def print_issues(analysis: TechDebtAnalysis | EvaluatedTechDebtAnalysis, *, widt
                 issue.title,
                 issue.short_description + "\n",
                 issue.recommended_action + "\n",
+                issue.impact + "\n",
                 eval_display,
                 files_display,
             )
@@ -85,6 +87,7 @@ def print_issues(analysis: TechDebtAnalysis | EvaluatedTechDebtAnalysis, *, widt
                 issue.title,
                 issue.short_description + "\n",
                 issue.recommended_action + "\n",
+                issue.impact + "\n",
                 files_display,
             )
 

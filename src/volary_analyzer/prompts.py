@@ -38,8 +38,8 @@ fixate too early on specific areas or kinds of technical debt.
 To help you keep on track, you should use the delegate_task() tool to hand off more complex tasks to sub-agents. This
 enables you to focus on the broader picture.
 
-You should aim to explore the whole repo before producing your response. Aim for around 10-15 issues, however it's okay 
-to raise fewer in the absense of finding anything substantial. 
+You should aim to explore the whole repo before producing your response. Aim for around 10-15 issues, however it's okay
+to raise fewer in the absense of finding anything substantial.
 
 <good-response>
 1. Update github.com/example/module/v1 to github.com/example-module/v2

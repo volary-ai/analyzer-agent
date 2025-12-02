@@ -37,7 +37,7 @@ def ls(glob: str) -> str:
 
     ret = sorted(filtered)
     if len(ret) > _LS_LIMIT:
-        ret_str = "\n".join(ret)
+        ret_str = "\n".join(ret[:_LS_LIMIT])
         # limit results to avoid filling the context window
         return f"found {len(ret)} results. Showing first {_LS_LIMIT}: \n{ret_str}"
     # Sort for consistent ordering
@@ -340,6 +340,7 @@ def delegate_tool_factory(api: CompletionApi, model: str, tools: list[Callable],
 
     return delegate_task
 
+
 def web_search_tool_factory(api: CompletionApi, model: str) -> Callable[[str], str]:
     def web_search(question: str) -> str:
         """
@@ -366,4 +367,5 @@ def web_search_tool_factory(api: CompletionApi, model: str) -> Callable[[str], s
             agent_name="Web Search",
         )
         return search_agent.run()
+
     return web_search

@@ -51,7 +51,7 @@ def main() -> int:
             "analyze",
             "eval",
             "print",
-            "search"
+            "search",
         ],
     )
     args = parser.parse_args()
