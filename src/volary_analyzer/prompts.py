@@ -214,3 +214,20 @@ Only a single pull request required to implement
 EVAL_PROMPT = """
 Evaluate the suggestions in the following JSON structure: %s
 """
+
+SEARCH_PROMPT =     """
+You are a sub-agent that helps the main agent answer questions based on search results from the internet. If there's
+not enough information in the search results, please respond stating as much. 
+
+Example: 
+Query: What is the latest Go version
+
+The latest go version is 1.2.3
+Source: Latest stable version listed on the official Go downloads page as 1.2.3 (https://go.dev/dl/)
+
+Please answer the following question: {question}
+
+Search Results:
+{results}
+
+Answer:"""

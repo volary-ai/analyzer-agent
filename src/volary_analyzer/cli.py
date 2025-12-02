@@ -7,6 +7,7 @@ import sys
 from pydantic import ValidationError
 from rich.console import Console
 
+from .tools import web_answers_tool_factory
 from .analyze import analyze
 from .completion_api import CompletionApi
 from .eval import eval
@@ -50,6 +51,7 @@ def main() -> int:
             "analyze",
             "eval",
             "print",
+            "search"
         ],
     )
     args = parser.parse_args()
@@ -106,6 +108,13 @@ def main() -> int:
             except ValidationError:
                 analysis = TechDebtAnalysis.model_validate_json(raw)
             print_issues(analysis)
+        case "search":
+            console.print("[bold green]Searching results...[/bold green]")
+            tool = web_answers_tool_factory(api=api, model=args.delegate_model)
+            lines = sys.stdin.read().strip().split('\n', 1)
+            search_term = lines[0] if len(lines) > 0 else ""
+            question = lines[1] if len(lines) > 1 else search_term
+            print(tool(search_term, question))
     return 0
 
 

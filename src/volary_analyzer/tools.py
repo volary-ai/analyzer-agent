@@ -4,13 +4,15 @@ import shutil
 import subprocess
 from collections.abc import Callable
 from pathlib import Path
+from typing import Callable
 
 import pathspec
 import requests
 
+from . import search
 from .agent import Agent
 from .completion_api import CompletionApi
-from .prompts import ANALYSIS_DELEGATE_PROMPT, ANALYZER_PROMPT
+from .prompts import ANALYSIS_DELEGATE_PROMPT, ANALYZER_PROMPT, SEARCH_PROMPT
 
 _LS_LIMIT = 100
 _GLOB_LIMIT = 100
@@ -338,3 +340,30 @@ def delegate_tool_factory(api: CompletionApi, model: str, tools: list[Callable],
         return delegate_agent.run(task=task, prompt=prompt)
 
     return delegate_task
+
+def web_answers_tool_factory(api: CompletionApi, model: str) -> Callable[[str, str], str]:
+    def web_search(search_term: str, question:str) -> str:
+        """
+        Searches the web for the answer to the question. The response should include the source, so consider how
+        trustworthy these sources are when making decisions off the back of this.
+
+        This tool is ideal for looking up factual information, or online data e.g. the latest version of a library.
+
+        This tool uses DuckDuckGo to fetch search results, then passes them to an agent to answer your question. You
+        should search like so: web_search(search_term="go downloads page", question="latest Go version"). Using the
+        search term like this should get better results from DuckDuckGo.
+
+        :param search_term: Term used to find relevant pages for the search
+        :param question: The question to answer from those pages
+        :return: The answer to the question
+        """
+        results = search.text(search_term)
+        search_agent = Agent(
+            instruction=SEARCH_PROMPT.format(question=question, results=results),
+            tools=[],
+            model=model,
+            api=api,
+            agent_name="Web Search",
+        )
+        return search_agent.run()
+    return web_search
