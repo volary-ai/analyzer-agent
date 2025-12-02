@@ -2,7 +2,7 @@
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class FileReference(BaseModel):
@@ -56,33 +56,6 @@ class TechDebtIssue(BaseModel):
         default=None,
         description="Optional: list of files related to this issue. Include specific line ranges when the issue is localized to particular code sections.",
     )
-
-    @field_validator("files", mode="before")
-    @classmethod
-    def parse_file_strings(cls, v):
-        """Convert string file references to FileReference objects for backward compatibility."""
-        if v is None:
-            return v
-
-        result = []
-        for item in v:
-            if isinstance(item, str):
-                if ":" in item:
-                    path, rest = item.split(":", 1)
-                    rest = rest.strip()
-                    try:
-                        if "-" in rest:
-                            start, end = rest.split("-", 1)
-                            result.append(FileReference(path=path, line_start=int(start), line_end=int(end)))
-                        else:
-                            result.append(FileReference(path=path, line_start=int(rest)))
-                    except ValueError:
-                        result.append(FileReference(path=item))
-                else:
-                    result.append(FileReference(path=item))
-            else:
-                result.append(item)
-        return result
 
 
 class TechDebtAnalysis(BaseModel):

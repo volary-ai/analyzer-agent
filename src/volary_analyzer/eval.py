@@ -13,10 +13,11 @@ from .output_schemas import (
     EvaluationCriteria,
     EvaluationInput,
     IssueWithContext,
-    TechDebtAnalysis, TechDebtIssue,
+    TechDebtAnalysis,
+    TechDebtIssue,
 )
-from .tools import read_file
 from .prompts import EVAL_PROMPT, EVAL_SYSTEM_PROMPT
+from .tools import read_file
 
 console = Console(stderr=True)  # Output to stderr so stdout is clean for piping
 
@@ -44,6 +45,7 @@ def contextualise_issue(issue: TechDebtIssue) -> IssueWithContext:
                 file_contents[file_ref.path] = f"Error reading file: {e}"
 
     return IssueWithContext(issue=issue, file_contents=file_contents)
+
 
 def eval(
     *,

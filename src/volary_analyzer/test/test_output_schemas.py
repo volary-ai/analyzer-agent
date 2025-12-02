@@ -3,7 +3,7 @@
 import json
 from pathlib import Path
 
-from ..output_schemas import FileReference, TechDebtAnalysis, TechDebtIssue
+from ..output_schemas import TechDebtAnalysis, TechDebtIssue
 
 
 class TestBackwardsCompatibility:
@@ -56,7 +56,7 @@ class TestBackwardsCompatibility:
             "short_description": "Brief description",
             "impact": "High impact",
             "recommended_action": "Fix it in file.py:123",
-            "files": ["file.py"],
+            "files": [{"path": "file.py"}],
         }
 
         issue = TechDebtIssue.model_validate(new_format)
@@ -70,12 +70,16 @@ class TestBackwardsCompatibility:
         assert issue.files[0].line_start is None
         assert issue.files[0].line_end is None
 
-    def test_files_string_parsing(self) -> None:
-        """Test that string file references are parsed into FileReference objects."""
+    def test_file_reference_formatting(self) -> None:
+        """Test that FileReference formats correctly."""
         data = {
             "title": "Test Issue",
             "short_description": "Test",
-            "files": ["file.py", "other.py:123", "third.py:10-20"],
+            "files": [
+                {"path": "file.py"},
+                {"path": "other.py", "line_start": 123},
+                {"path": "third.py", "line_start": 10, "line_end": 20},
+            ],
         }
 
         issue = TechDebtIssue.model_validate(data)
