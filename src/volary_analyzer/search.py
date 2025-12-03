@@ -17,7 +17,7 @@ def web_search(query: str, max_results: int = 10) -> str:
 
     Args:
         query: The search query to run
-        max_results: Maximum number of results to return (default 10)
+        max_results: Maximum number of results to return. Searching is cheap, so this can be set relatively high.
 
     Returns:
         Formatted string with numbered search results showing title and URL
