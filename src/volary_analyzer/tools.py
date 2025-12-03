@@ -30,18 +30,24 @@ def ls(glob: str) -> str:
     :param glob: The glob pattern to match files with. Supports the ** extension for recursive search.
     :return: a list of matching paths
     """
-    # Use glob with recursive=True to support ** patterns
-    matches = glob_module.glob(glob, recursive=True)
-    # Filter out ignored paths
-    filtered = [m for m in matches if not _should_ignore(m)]
-
-    ret = sorted(filtered)
+    ret = ls_all(glob)
     if len(ret) > _LS_LIMIT:
         ret_str = "\n".join(ret[:_LS_LIMIT])
         # limit results to avoid filling the context window
         return f"found {len(ret)} results. Showing first {_LS_LIMIT}: \n{ret_str}"
     # Sort for consistent ordering
     return "\n".join(ret)
+
+
+def ls_all(glob: str) -> list[str]:
+    """Lists all files under a directory.
+
+    Lower-level than ls and not designed for an LLM to wield directly.
+    """
+    # Use glob with recursive=True to support ** patterns
+    matches = glob_module.glob(glob, recursive=True)
+    # Filter out ignored paths
+    return sorted(m for m in matches if not _should_ignore(m))
 
 
 def _should_ignore(path: str) -> bool:
