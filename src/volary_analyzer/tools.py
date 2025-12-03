@@ -195,11 +195,11 @@ def query_issues_factory(collection: chromadb.Collection) -> Callable[[list[str]
 
     def query_issues(queries: list[str]) -> str:
         """
-        Search GitHub issues and PRs using semantic vector search.
+        Search for similar issues using semantic vector search.
 
-        This performs semantic search over issue titles, descriptions, and PR diffs
-        using ChromaDB's vector embeddings. It finds issues based on meaning rather
-        than exact keyword matches.
+        This searches both GitHub issues/PRs and previously identified tech debt issues
+        from past analysis runs. It uses vector embeddings to find semantically similar
+        issues, not just keyword matches.
 
         Usage notes:
         - Run multiple queries with different phrasings to find related issues
@@ -207,7 +207,8 @@ def query_issues_factory(collection: chromadb.Collection) -> Callable[[list[str]
           multiple tool calls for each issue instead.
         - Queries are semantic, so "authentication failure" will match "login broken"
         - Returns top 5 most relevant results per query
-        - Use this to check if issues have already been reported
+        - Use this to check if issues have already been reported or identified
+        - Reference issues by their ID (e.g., "issue_123") when marking duplicates
 
         Examples:
             query_issues(["memory leak in parser"])
@@ -217,7 +218,7 @@ def query_issues_factory(collection: chromadb.Collection) -> Callable[[list[str]
             queries: List of natural language search queries
 
         Returns:
-            Formatted string containing top matching issues with titles, URLs, and content
+            Formatted string with matching issues showing source (GitHub or previous analysis), IDs, and content
         """
         results = collection.query(query_texts=queries, n_results=5)
         ret: list[str] = []
@@ -231,10 +232,30 @@ def query_issues_factory(collection: chromadb.Collection) -> Callable[[list[str]
             ),
             1,
         ):
-            ret.append(f"===== {i}. [ID: {doc_id}] (distance: {distance:.4f}) ======")
-            ret.append(f"   Issue #{meta['number']} ({meta['state'].upper()}): {meta['title']}")
-            ret.append(f"   URL: {meta['url']}")
-            ret.append(f"   Body:\n{doc}")
+            issue_id = meta.get("issue_id", doc_id)
+            source = meta.get("source", "unknown")
+            title = meta.get("title", "Untitled")
+
+            ret.append(f"===== {i}. [ID: {issue_id}] (distance: {distance:.4f}) ======")
+
+            if source == "github":
+                state = meta.get("state", "unknown")
+                url = meta.get("url", "")
+                ret.append(f"   Source: GitHub Issue ({state.upper()})")
+                ret.append(f"   Title: {title}")
+                ret.append(f"   URL: {url}")
+            elif source == "analysis_history":
+                files = meta.get("files", "")
+                ret.append(f"   Source: Previous Analysis")
+                ret.append(f"   Title: {title}")
+                if files:
+                    ret.append(f"   Files: {files}")
+            else:
+                ret.append(f"   Source: {source}")
+                ret.append(f"   Title: {title}")
+
+            ret.append(f"   Content:\n{doc}")
+            ret.append("")  # Blank line between results
 
         return "\n".join(ret)
 

@@ -8,6 +8,7 @@ from platformdirs import user_config_dir
 from pydantic import ValidationError
 from rich.console import Console
 
+from .analysis_history import save_analysis_history
 from .analyze import analyze
 from .completion_api import CompletionApi
 from .eval import eval
@@ -81,6 +82,10 @@ def main() -> int:
                 coordinator_model=args.coordinator_model,
                 delegate_model=args.delegate_model,
             )
+            # Save analysis history for future runs
+            if analysis.issues:
+                save_analysis_history(args.cache_dir, analysis.issues)
+
             evaluated_analysis = eval(
                 api=api,
                 analysis=analysis,
@@ -97,6 +102,7 @@ def main() -> int:
                 coordinator_model=args.coordinator_model,
                 delegate_model=args.delegate_model,
             )
+
             print(analysis.model_dump_json(indent=2))
             api.print_usage_summary()
         case "eval":

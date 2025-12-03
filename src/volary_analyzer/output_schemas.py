@@ -57,7 +57,6 @@ class TechDebtIssue(BaseModel):
         description="Optional: list of files related to this issue. Include specific line ranges when the issue is localized to particular code sections.",
     )
 
-
 class TechDebtAnalysis(BaseModel):
     """Container for tech debt analysis results."""
 
