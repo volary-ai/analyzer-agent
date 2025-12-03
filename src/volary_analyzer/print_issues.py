@@ -106,7 +106,10 @@ def _highlight_files(text: str) -> str:
 
 
 def render_summary_markdown(
-        analysis: TechDebtAnalysis | EvaluatedTechDebtAnalysis, repo: str = "", revision: str = "", files: set = frozenset(),
+    analysis: TechDebtAnalysis | EvaluatedTechDebtAnalysis,
+    repo: str = "",
+    revision: str = "",
+    files: set = frozenset(),
 ) -> str:
     """Renders a Markdown table (GitHub flavour) containing the given analysis issues.
 
@@ -125,7 +128,10 @@ def render_summary_markdown(
             "| ----------- | -------------- | -------------- | ------------------ |",
         ]
 
-    rows += ["| " + " | ".join(_render_summary_markdown_row(issue, repo, revision, files)) + " |" for issue in analysis.issues]
+    rows += [
+        "| " + " | ".join(_render_summary_markdown_row(issue, repo, revision, files)) + " |"
+        for issue in analysis.issues
+    ]
     return "\n".join(rows)
 
 
@@ -140,7 +146,9 @@ def _render_summary_markdown_row(issue, repo: str = "", revision: str = "", file
         eval_display = "\n".join(f"{_format_eval_key(k)}: {_format_eval_value(k, v)}" for k, v in eval_data.items())
         yield _escape_newlines(eval_display)
 
-    files_display = "\n".join([_file_source_link(file, repo, revision, files) for file in issue.files]) if issue.files else "-"
+    files_display = (
+        "\n".join([_file_source_link(file, repo, revision, files) for file in issue.files]) if issue.files else "-"
+    )
     yield _escape_newlines(files_display)
 
 

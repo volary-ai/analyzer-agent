@@ -38,7 +38,7 @@ def ls(glob: str) -> str:
     return "\n".join(ret)
 
 
-def ls_all(glob:str) -> list[str]:
+def ls_all(glob: str) -> list[str]:
     """Lists all files under a directory.
 
     Lower-level than ls and not designed for an LLM to wield directly.
