@@ -41,3 +41,5 @@ class TestRenderSummaryMarkdown:
             "Code file with multiple lines: [tools/build_langserver/langserver_main.go:43-54](https://github.com/thought-machine/please/blob/master/tools/build_langserver/langserver_main.go#L43-L54)"
             in md
         )
+        assert "Not a package: crypto/rand.Read" in md
+        assert "Also not a package: dev/build" in md
