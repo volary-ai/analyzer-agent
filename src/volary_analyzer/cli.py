@@ -4,6 +4,7 @@ import argparse
 import os
 import sys
 
+from platformdirs import user_config_dir
 from pydantic import ValidationError
 from rich.console import Console
 
@@ -39,6 +40,11 @@ def main() -> int:
         "--completions_endpoint",
         default=os.getenv("COMPLETIONS_ENDPOINT", "https://openrouter.ai/api/v1/chat/completions"),
         help="Completions endpoint (default: env COMPLETIONS_ENDPOINT or OpenRouter)",
+    )
+    parser.add_argument(
+        "--cache_dir",
+        default=user_config_dir("volary-analyzer", "volary.ai"),
+        help="Directory for caching vector database (default: user config directory)",
     )
     parser.add_argument("-C", "--change_dir", help="Directory to change into before running")
     parser.add_argument(
@@ -80,6 +86,7 @@ def main() -> int:
                 analysis=analysis,
                 coordinator_model=args.coordinator_model,
                 search_model=args.delegate_model,
+                cache_dir=args.cache_dir,
             )
             print_issues(evaluated_analysis)
             api.print_usage_summary()
@@ -99,6 +106,7 @@ def main() -> int:
                 api=api,
                 analysis=analysis,
                 coordinator_model=args.coordinator_model,
+                cache_dir=args.cache_dir,
                 search_model=args.delegate_model,
             )
             print(evaluated_analysis.model_dump_json(indent=2))

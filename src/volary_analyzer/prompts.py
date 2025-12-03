@@ -109,6 +109,8 @@ We are tasked with evaluating the usefulness of suggestions made to fix various 
 We should produce a set of indicators about what kind of issues these are and how they will be viewed by the repo owners, along with
 the original title of the issue exactly as it was in the input.
 
+{github_issue_instruction}
+
 When considering the suggestion, take into account whether it is an objective suggestion that any repo maintainer would want, which should
 score higher, or a subjective opinion which could be a matter of taste and the maintainers of this repo might not appreciate.
 

@@ -86,6 +86,10 @@ class EvaluatedIssue(BaseModel):
     effort: Literal["low", "medium", "high"] = Field(
         description="Amount of engineering time required to implement: low, medium, or high"
     )
+    duplicated_by: list[str] = Field(
+        default=[],
+        description="any issue IDs that this issue is a duplicate of. You should use the query_issues() tool to find related issues.",
+    )
 
 
 class Evaluation(BaseModel):
@@ -113,6 +117,10 @@ class EvaluatedTechDebtIssue(TechDebtIssue):
     """A tech debt issue with evaluation criteria attached."""
 
     evaluation: EvaluationCriteria = Field(description="Evaluation criteria for this issue")
+    duplicated_by: list[str] = Field(
+        default=[],
+        description="any issue IDs that this issue is a duplicate of. You should use the query_issues() tool to find related issues.",
+    )
 
 
 class EvaluatedTechDebtAnalysis(BaseModel):

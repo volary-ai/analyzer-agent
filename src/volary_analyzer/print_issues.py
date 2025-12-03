@@ -84,6 +84,9 @@ def print_issues(analysis: TechDebtAnalysis | EvaluatedTechDebtAnalysis, *, widt
             # Format evaluation criteria
             eval_data = issue.evaluation.model_dump()
             eval_display = "\n".join(f"{_format_eval_key(k)}: {_format_eval_value(k, v)}" for k, v in eval_data.items())
+            if issue.duplicated_by:
+                duplicated_by_display = "\n".join(issue.duplicated_by)
+                eval_display += f"\nDuplicates: [red]{duplicated_by_display}[/red]"
             table.add_row(
                 issue.title,
                 _highlight_files(issue.short_description) + "\n",

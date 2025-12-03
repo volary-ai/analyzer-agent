@@ -14,6 +14,9 @@ inputs:
   delegate-model:
     description: 'Model to use for running delegated tasks'
     required: false
+  cache-dir:
+    description: 'Directory for caching outputs (defaults to $GITHUB_WORKSPACE/.cache/volary-analyzer)'
+    required: false
 
 runs:
   using: docker

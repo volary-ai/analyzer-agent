@@ -2,10 +2,14 @@
 Evaluation agent - scores technical debt issues for relevance and actionability.
 """
 
+from collections.abc import Callable
+
+import chromadb
 from rich.console import Console
 
 from .agent import Agent
 from .completion_api import CompletionApi
+from .github_helper import get_github_client, get_github_repo
 from .output_schemas import (
     EvaluatedTechDebtAnalysis,
     EvaluatedTechDebtIssue,
@@ -17,7 +21,8 @@ from .output_schemas import (
     TechDebtIssue,
 )
 from .prompts import EVAL_PROMPT, EVAL_SYSTEM_PROMPT
-from .tools import read_file, web_search_tool_factory
+from .tools import query_issues_factory, read_file, web_search_tool_factory
+from .vectorised_issue_search import github_vector_db
 
 console = Console(stderr=True)  # Output to stderr so stdout is clean for piping
 
@@ -48,7 +53,12 @@ def contextualise_issue(issue: TechDebtIssue) -> IssueWithContext:
 
 
 def eval(
-    *, analysis: TechDebtAnalysis, api: CompletionApi, coordinator_model: str, search_model: str
+    *,
+    analysis: TechDebtAnalysis,
+    api: CompletionApi,
+    coordinator_model: str,
+    search_model: str,
+    cache_dir: str,
 ) -> EvaluatedTechDebtAnalysis:
     if not analysis.issues:
         console.print("[yellow]No issues to evaluate[/yellow]")
@@ -59,7 +69,22 @@ def eval(
         style="cyan",
     )
 
-    console.print("[bold]Building context with file contents...[/bold]", style="cyan")
+    tools: list[Callable] = [
+        web_search_tool_factory(
+            api=api,
+            model=search_model,
+        )
+    ]
+    github_issue_instruction = ""
+    if repo_path := get_github_repo():
+        chroma_client = chromadb.PersistentClient(path=cache_dir)
+        gh_client = get_github_client()
+        collection = github_vector_db(chroma_client, gh_client, repo_path)
+        tools.append(query_issues_factory(collection))
+        github_issue_instruction = "You MUST search for related issues with query_issues() to make sure you're not reporting issues that have already been considered."
+    else:
+        console.print("I notice this isn't a GitHub repo. We have no access to your issues so may report duplicates.")
+
     issues_with_context = []
     for issue in analysis.issues:
         issues_with_context.append(contextualise_issue(issue))
@@ -67,16 +92,11 @@ def eval(
     evaluation_input = EvaluationInput(issues=issues_with_context)
 
     eval_agent = Agent(
-        instruction=EVAL_SYSTEM_PROMPT,
+        instruction=EVAL_SYSTEM_PROMPT.format(github_issue_instruction=github_issue_instruction),
         model=coordinator_model,
         api=api,
         agent_name="Evaluator",
-        tools=[
-            web_search_tool_factory(
-                api=api,
-                model=search_model,
-            )
-        ],
+        tools=tools,
     )
 
     console.print("[bold]Running evaluation...[/bold]", style="cyan")
@@ -107,6 +127,7 @@ def eval(
                     impact_score=evaluation.impact_score,
                     effort=evaluation.effort,
                 ),
+                duplicated_by=evaluation.duplicated_by,
             )
             evaluated_issues.append(evaluated_issue)
 
