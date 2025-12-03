@@ -267,7 +267,7 @@ Agent: tool calls(web_search("latest pytest version pypi"))
 Agent: tool calls(fetch_page_content("https://pypi.org/project/pytest/releases"))
 ...
 
-There's a new ruff version but otherwise they're up to date. 
+There's a new ruff version but otherwise they're up to date.
 ```
 
 With that in mind, please answer the following question: {question}
