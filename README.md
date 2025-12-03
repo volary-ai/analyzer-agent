@@ -27,6 +27,13 @@ jobs:
           completions-api-key: ${{ secrets.OPENROUTER_API_KEY }}
 ```
 
+Alternatively you can run it locally using Python:
+
+- Download the wheel from the [latest release](https://github.com/volary-ai/analyzer-agent/releases/latest)
+- Install it using `pip install`
+- Set the API key environment variable: `export COMPLETIONS_API_KEY="<your API key>"`
+- Run `volary-analyzer` within your repo to begin its analysis.
+
 ## License
 
 This project is currently source-available for internal use only.
