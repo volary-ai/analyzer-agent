@@ -67,6 +67,7 @@ def print_issues(analysis: TechDebtAnalysis | EvaluatedTechDebtAnalysis, *, widt
     table.add_column("Title", style="cyan bold", width=30, no_wrap=False)
     table.add_column("Description", style="white", width=40, no_wrap=False)
     table.add_column("Action", style="green", width=35, no_wrap=False)
+    table.add_column("Impact", style="green", width=35, no_wrap=False)
 
     # Check if this is evaluated analysis by checking if first issue has evaluation
     has_evaluation = isinstance(analysis, EvaluatedTechDebtAnalysis)
@@ -87,6 +88,7 @@ def print_issues(analysis: TechDebtAnalysis | EvaluatedTechDebtAnalysis, *, widt
                 issue.title,
                 _highlight_files(issue.short_description) + "\n",
                 _highlight_files(issue.recommended_action) + "\n",
+                issue.impact + "\n",
                 eval_display,
                 files_display,
             )
@@ -95,6 +97,7 @@ def print_issues(analysis: TechDebtAnalysis | EvaluatedTechDebtAnalysis, *, widt
                 issue.title,
                 _highlight_files(issue.short_description) + "\n",
                 _highlight_files(issue.recommended_action) + "\n",
+                issue.impact + "\n",
                 files_display,
             )
 
@@ -108,7 +111,10 @@ def _highlight_files(text: str) -> str:
 
 
 def render_summary_markdown(
-    analysis: TechDebtAnalysis | EvaluatedTechDebtAnalysis, repo: str = "", revision: str = ""
+    analysis: TechDebtAnalysis | EvaluatedTechDebtAnalysis,
+    repo: str = "",
+    revision: str = "",
+    files: set = frozenset(),
 ) -> str:
     """Renders a Markdown table (GitHub flavour) containing the given analysis issues.
 
@@ -127,14 +133,19 @@ def render_summary_markdown(
             "| ----------- | -------------- | -------------- | ------------------ | ------------------ |",
         ]
 
-    rows += ["| " + " | ".join(_render_summary_markdown_row(issue, repo, revision)) + " |" for issue in analysis.issues]
+    rows += [
+        "| " + " | ".join(_render_summary_markdown_row(issue, repo, revision, files)) + " |"
+        for issue in analysis.issues
+    ]
     return "\n".join(rows)
 
 
-def _render_summary_markdown_row(issue: TechDebtIssue, repo: str = "", revision: str = "") -> Iterable[str]:
+def _render_summary_markdown_row(
+    issue: TechDebtIssue, repo: str = "", revision: str = "", files: set = frozenset()
+) -> Iterable[str]:
     yield _escape_newlines(issue.title)
-    yield _escape_newlines(_add_source_links(issue.short_description, repo, revision))
-    yield _escape_newlines(_add_source_links(issue.recommended_action, repo, revision))
+    yield _escape_newlines(_add_source_links(issue.short_description, repo, revision, files))
+    yield _escape_newlines(_add_source_links(issue.recommended_action, repo, revision, files))
 
     if evaluation := getattr(issue, "evaluation", None):
         # Format evaluation criteria
@@ -142,7 +153,9 @@ def _render_summary_markdown_row(issue: TechDebtIssue, repo: str = "", revision:
         eval_display = "\n".join(f"{_format_eval_key(k)}: {_format_eval_value(k, v)}" for k, v in eval_data.items())
         yield _escape_newlines(eval_display)
 
-    files_display = "\n".join([_file_source_link(file, repo, revision) for file in issue.files]) if issue.files else "-"
+    files_display = (
+        "\n".join([_file_source_link(file, repo, revision, files) for file in issue.files]) if issue.files else "-"
+    )
     yield _escape_newlines(files_display)
     yield _create_issue_link(issue, repo, revision)
 
@@ -151,7 +164,7 @@ def _escape_newlines(str: str) -> str:
     return str.replace("\n", "<br>")
 
 
-def _add_source_links(text: str, repo: str = "", revision: str = "") -> str:
+def _add_source_links(text: str, repo: str = "", revision: str = "", files: set = frozenset()) -> str:
     """Add Markdown links to source files found in the given text."""
     return _file_search_re.sub(
         lambda m: _markdown_link(
@@ -162,13 +175,13 @@ def _add_source_links(text: str, repo: str = "", revision: str = "") -> str:
             repo=repo,
             revision=revision,
         )
-        if repo and revision
+        if repo and revision and m.group(1) in files or m.group(4) in files
         else m.group(0),
         text,
     )
 
 
-def _file_source_link(ref: FileReference, repo: str = "", revision: str = "") -> str:
+def _file_source_link(ref: FileReference, repo: str = "", revision: str = "", files: set = frozenset()) -> str:
     """Render a Markdown link from one of our file objects."""
     return (
         _markdown_link(
@@ -178,7 +191,7 @@ def _file_source_link(ref: FileReference, repo: str = "", revision: str = "") ->
             repo=repo,
             revision=revision,
         )
-        if repo and revision
+        if repo and revision and ref.path in files
         else str(ref)
     )
 
@@ -211,7 +224,7 @@ def _create_issue_link(issue: TechDebtIssue, repo: str, revision: str) -> str:
 
 def _markdown_link(filename: str, start: str | None, end: str | None, repo: str, revision: str) -> str:
     """Render a Markdown link from a set of components."""
-    query = f"#L{start}-{end}" if end else f"#L{start}" if start else ""
+    query = f"#L{start}-L{end}" if end else f"#L{start}" if start else ""
     text = f"{filename}:{start}-{end}" if end else f"{filename}:{start}" if start else filename
     return f"[{text}](https://github.com/{repo}/blob/{revision}/{filename}{query})"
 

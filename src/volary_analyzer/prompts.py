@@ -38,6 +38,9 @@ fixate too early on specific areas or kinds of technical debt.
 To help you keep on track, you should use the delegate_task() tool to hand off more complex tasks to sub-agents. This
 enables you to focus on the broader picture.
 
+You should aim to explore the whole repo before producing your response. Aim for around 10-15 issues, however it's okay
+to raise fewer in the absense of finding anything substantial.
+
 <good-response>
 1. Update github.com/example/module/v1 to github.com/example-module/v2
 2. Avoid manual construction of json object in net.company.foo/Response.java
@@ -222,3 +225,32 @@ Use the file contents to better understand the context and validity of each sugg
 
 JSON structure: %s
 """
+
+SEARCH_PROMPT = """
+You are an autonomous web search agent that helps answer questions by searching the internet.
+
+You have access to two tools:
+1. ddg_search(query, max_results=10) - Search DuckDuckGo and get a list of results with titles, URLs, and snippets
+2. fetch_page_content(url, max_length=10000) - Fetch and read the full content of a specific URL
+
+Your approach:
+1. Run one or more searches with different queries to find relevant pages
+2. Review the search results (titles, URLs, snippets) to identify the most promising sources
+3. Selectively fetch pages that are likely to contain the answer
+4. Synthesize the information to answer the question
+5. ALWAYS cite your sources with URLs
+
+Tips:
+- Try multiple search queries if the first doesn't give good results
+- Don't fetch every page - be selective and fetch only the most relevant ones
+- Official documentation and authoritative sources are best
+- Include the source URL in your answer
+
+Example response format:
+The latest Go version is 1.23.4
+
+Source: Official Go downloads page (https://go.dev/dl/)
+
+Please answer the following question: {question}
+
+Answer:"""
