@@ -21,7 +21,7 @@ from .output_schemas import (
     TechDebtIssue,
 )
 from .prompts import EVAL_PROMPT, EVAL_SYSTEM_PROMPT
-from .tools import query_issues_factory, read_file, web_search_tool_factory
+from .tools import query_issues_factory, read_file, web_answers_tool_factory
 from .vectorised_issue_search import github_vector_db
 
 console = Console(stderr=True)  # Output to stderr so stdout is clean for piping
@@ -70,7 +70,7 @@ def eval(
     )
 
     tools: list[Callable] = [
-        web_search_tool_factory(
+        web_answers_tool_factory(
             api=api,
             model=search_model,
         )

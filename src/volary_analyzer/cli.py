@@ -13,7 +13,7 @@ from .completion_api import CompletionApi
 from .eval import eval
 from .output_schemas import EvaluatedTechDebtAnalysis, TechDebtAnalysis
 from .print_issues import print_issues
-from .tools import web_search_tool_factory
+from .tools import web_answers_tool_factory
 
 console = Console(stderr=True)
 
@@ -120,7 +120,7 @@ def main() -> int:
             print_issues(analysis)
         case "search":
             console.print("[bold green]Searching results...[/bold green]")
-            tool = web_search_tool_factory(api=api, model=args.delegate_model)
+            tool = web_answers_tool_factory(api=api, model=args.delegate_model)
             question = sys.stdin.read().strip()
             print(tool(question))
     return 0

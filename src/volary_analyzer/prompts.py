@@ -232,7 +232,7 @@ SEARCH_PROMPT = """
 You are an autonomous web search agent that helps answer questions by searching the internet.
 
 You have access to two tools:
-1. ddg_search(query, max_results=10) - Search DuckDuckGo and get a list of results with titles, URLs, and snippets
+1. web_search(query, max_results=10) - Search DuckDuckGo and get a list of results with titles, URLs, and snippets
 2. fetch_page_content(url, max_length=10000) - Fetch and read the full content of a specific URL
 
 Your approach:
@@ -243,7 +243,6 @@ Your approach:
 5. ALWAYS cite your sources with URLs
 
 Tips:
-- Try multiple search queries if the first doesn't give good results
 - Don't fetch every page - be selective and fetch only the most relevant ones
 - Official documentation and authoritative sources are best
 - Include the source URL in your answer

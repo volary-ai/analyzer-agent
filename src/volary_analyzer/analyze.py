@@ -1,7 +1,7 @@
 from .agent import Agent, CompletionApi, console
 from .output_schemas import TechDebtAnalysis
 from .prompts import ANALYZER_PROMPT, START_ANALYSIS_PROMPT
-from .tools import delegate_tool_factory, grep, ls, read_file, web_search_tool_factory
+from .tools import delegate_tool_factory, grep, ls, read_file, web_answers_tool_factory
 
 
 def analyze(
@@ -13,7 +13,7 @@ def analyze(
     # Gather repository context
     repo_context = get_repo_context()
 
-    tools = [ls, read_file, grep, web_search_tool_factory(api, delegate_model)]
+    tools = [ls, read_file, grep, web_answers_tool_factory(api, delegate_model)]
 
     coordinator_agent = Agent(
         instruction=ANALYZER_PROMPT,
