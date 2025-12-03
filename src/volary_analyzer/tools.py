@@ -110,8 +110,8 @@ def read_file(path: str, from_line: int = None, to_line: int = None) -> str:
         # Filter lines if range is specified
         if from_line is not None or to_line is not None:
             lines = output.split("\n")
-            start = (int(from_line) - 1) if from_line is not None else 0
-            end = int(to_line) if to_line is not None else len(lines)
+            start = (from_line - 1) if from_line is not None else 0
+            end = to_line if to_line is not None else len(lines)
             return "\n".join(lines[start:end])
 
         return output
