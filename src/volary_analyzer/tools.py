@@ -10,7 +10,8 @@ import requests
 
 from .agent import Agent
 from .completion_api import CompletionApi
-from .prompts import ANALYSIS_DELEGATE_PROMPT, ANALYZER_PROMPT
+from .prompts import ANALYSIS_DELEGATE_PROMPT, ANALYZER_PROMPT, SEARCH_PROMPT
+from .search import ddg_search, fetch_page_content
 
 _LS_LIMIT = 100
 _GLOB_LIMIT = 100
@@ -36,7 +37,7 @@ def ls(glob: str) -> str:
 
     ret = sorted(filtered)
     if len(ret) > _LS_LIMIT:
-        ret_str = "\n".join(ret)
+        ret_str = "\n".join(ret[:_LS_LIMIT])
         # limit results to avoid filling the context window
         return f"found {len(ret)} results. Showing first {_LS_LIMIT}: \n{ret_str}"
     # Sort for consistent ordering
@@ -338,3 +339,33 @@ def delegate_tool_factory(api: CompletionApi, model: str, tools: list[Callable],
         return delegate_agent.run(task=task, prompt=prompt)
 
     return delegate_task
+
+
+def web_search_tool_factory(api: CompletionApi, model: str) -> Callable[[str], str]:
+    def web_search(question: str) -> str:
+        """
+        Searches the web for the answer to a question using an autonomous sub-agent.
+
+        The sub-agent can run multiple searches and selectively fetch web pages to find the answer.
+        This tool is ideal for looking up factual information, current versions, or online data.
+
+        Examples:
+            web_search("What is the latest Go version?")
+            web_search("What are the best practices for Python asyncio in 2024?")
+
+        It is highly recommended to use this tool to verify that a library, framework, or language is actually out of
+        date.
+
+        :param question: The question to answer using web search
+        :return: The answer to the question with sources
+        """
+        search_agent = Agent(
+            instruction=SEARCH_PROMPT.format(question=question),
+            tools=[ddg_search, fetch_page_content],
+            model=model,
+            api=api,
+            agent_name="Web Search",
+        )
+        return search_agent.run()
+
+    return web_search

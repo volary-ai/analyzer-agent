@@ -61,6 +61,7 @@ def main() -> int:
             api=api,
             analysis=analysis,
             coordinator_model=coordinator_model,
+            search_model=delegate_model,
         )
         print_issues(evaluated_analysis)
         with open(summary_output, "a") as f:
