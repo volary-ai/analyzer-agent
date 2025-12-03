@@ -92,7 +92,7 @@ def _get_gitignore_spec():
     return _gitignore_spec
 
 
-def read_file(path: str, from_line: int = None, to_line: int = None) -> str:
+def read_file(path: str, from_line: int | None = None, to_line: int | None = None) -> str:
     """
     Reads the contents of the file at the provider path (relative to the working directory).
     Includes git blame annotations showing line numbers and dates when each line was changed.
