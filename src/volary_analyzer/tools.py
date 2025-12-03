@@ -9,7 +9,7 @@ import pathspec
 from .agent import Agent
 from .completion_api import CompletionApi
 from .prompts import ANALYSIS_DELEGATE_PROMPT, ANALYZER_PROMPT, SEARCH_PROMPT
-from .search import web_search, fetch_page_content
+from .search import fetch_page_content, web_search
 
 _LS_LIMIT = 100
 _GLOB_LIMIT = 100
