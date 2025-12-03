@@ -27,7 +27,9 @@ class TestRenderSummaryMarkdown:
         """Test that we can render GitHub source links in the markdown."""
         with open("src/volary_analyzer/test/testdata/minimal-evaluated.json") as f:
             analysis = EvaluatedTechDebtAnalysis.model_validate_json(f.read())
-        md = render_summary_markdown(analysis, repo="thought-machine/please", revision="master")
+        md = render_summary_markdown(analysis, repo="thought-machine/please", revision="master", files={
+            "go.mod", "src/cli/logging.go", "src/cli/logging/logging.go", "tools/build_langserver/langserver_main.go",
+        })
         assert "Go mod: [go.mod:59](https://github.com/thought-machine/please/blob/master/go.mod#L59)" in md
         assert (
             "Code file: [src/cli/logging.go](https://github.com/thought-machine/please/blob/master/src/cli/logging.go)"
