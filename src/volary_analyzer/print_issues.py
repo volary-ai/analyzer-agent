@@ -2,12 +2,14 @@
 import json
 import re
 import sys
+import urllib.parse
+from collections.abc import Iterable
 from typing import Any
 
 from rich.console import Console
 from rich.table import Table
 
-from .output_schemas import EvaluatedTechDebtAnalysis, FileReference, TechDebtAnalysis
+from .output_schemas import EvaluatedTechDebtAnalysis, FileReference, TechDebtAnalysis, TechDebtIssue
 
 console = Console(stderr=True)
 
@@ -52,7 +54,7 @@ def _format_eval_value(key: str, value: Any) -> str:
     return str(value)
 
 
-def print_issues(analysis: TechDebtAnalysis | EvaluatedTechDebtAnalysis, *, width: int | None = None):
+def print_issues(analysis: TechDebtAnalysis | EvaluatedTechDebtAnalysis, *, width: int | None = None) -> None:
     """Print tech debt issues in a formatted table.
 
     Args:
@@ -122,13 +124,13 @@ def render_summary_markdown(
     # Header rows
     if isinstance(analysis, EvaluatedTechDebtAnalysis):
         rows = [
-            "| Title       | Description    | Action         | Evaluation        | Files              |",
-            "| ----------- | -------------- | -------------- | ----------------- | ------------------ |",
+            "| Title       | Description    | Action         | Evaluation        | Files              | Create Issue       |",
+            "| ----------- | -------------- | -------------- | ----------------- | ------------------ | ------------------ |",
         ]
     else:
         rows = [
-            "| Title       | Description    | Action         | Files              |",
-            "| ----------- | -------------- | -------------- | ------------------ |",
+            "| Title       | Description    | Action         | Files              | Create Issue       |",
+            "| ----------- | -------------- | -------------- | ------------------ | ------------------ |",
         ]
 
     rows += [
@@ -138,7 +140,9 @@ def render_summary_markdown(
     return "\n".join(rows)
 
 
-def _render_summary_markdown_row(issue, repo: str = "", revision: str = "", files: set = frozenset()):
+def _render_summary_markdown_row(
+    issue: TechDebtIssue, repo: str = "", revision: str = "", files: set = frozenset()
+) -> Iterable[str]:
     yield _escape_newlines(issue.title)
     yield _escape_newlines(_add_source_links(issue.short_description, repo, revision, files))
     yield _escape_newlines(_add_source_links(issue.recommended_action, repo, revision, files))
@@ -153,13 +157,14 @@ def _render_summary_markdown_row(issue, repo: str = "", revision: str = "", file
         "\n".join([_file_source_link(file, repo, revision, files) for file in issue.files]) if issue.files else "-"
     )
     yield _escape_newlines(files_display)
+    yield _create_issue_link(issue, repo, revision)
 
 
 def _escape_newlines(str: str) -> str:
     return str.replace("\n", "<br>")
 
 
-def _add_source_links(text: str, repo: str = "", revision: str = "", files: set = frozenset()):
+def _add_source_links(text: str, repo: str = "", revision: str = "", files: set = frozenset()) -> str:
     """Add Markdown links to source files found in the given text."""
     return _file_search_re.sub(
         lambda m: _markdown_link(
@@ -176,7 +181,7 @@ def _add_source_links(text: str, repo: str = "", revision: str = "", files: set 
     )
 
 
-def _file_source_link(ref: FileReference, repo: str = "", revision: str = "", files: set = frozenset()):
+def _file_source_link(ref: FileReference, repo: str = "", revision: str = "", files: set = frozenset()) -> str:
     """Render a Markdown link from one of our file objects."""
     return (
         _markdown_link(
@@ -191,7 +196,33 @@ def _file_source_link(ref: FileReference, repo: str = "", revision: str = "", fi
     )
 
 
-def _markdown_link(filename: str, start: str | None, end: str | None, repo: str, revision: str):
+def _create_issue_link(issue: TechDebtIssue, repo: str, revision: str) -> str:
+    escaped_title = urllib.parse.quote_plus(issue.title)
+    escaped_body = urllib.parse.quote_plus(
+        _add_source_links(
+            f"""
+# Description
+
+{issue.short_description}
+
+# Impact
+
+{issue.impact}
+
+# Recommended Action
+
+{issue.recommended_action}
+
+- powered by [volary](https://volary.ai)
+""",
+            repo,
+            revision,
+        )
+    )
+    return f"[Create Issue](https://github.com/{repo}/issues/new?title={escaped_title}&body={escaped_body})"
+
+
+def _markdown_link(filename: str, start: str | None, end: str | None, repo: str, revision: str) -> str:
     """Render a Markdown link from a set of components."""
     query = f"#L{start}-L{end}" if end else f"#L{start}" if start else ""
     text = f"{filename}:{start}-{end}" if end else f"{filename}:{start}" if start else filename
