@@ -10,6 +10,7 @@ from src.volary_analyzer.analyze import analyze
 from src.volary_analyzer.completion_api import CompletionApi
 from src.volary_analyzer.eval import eval
 from src.volary_analyzer.print_issues import print_issues, render_summary_markdown
+from src.volary_analyzer.tools import ls_all
 
 DEFAULT_COMPLETION_ENDPOINT = "https://openrouter.ai/api/v1/chat/completions"
 DEFAULT_COORDINATOR_MODEL = "openai/gpt-5.1"
@@ -63,8 +64,9 @@ def main() -> int:
             coordinator_model=coordinator_model,
         )
         print_issues(evaluated_analysis)
+        files = set(ls_all("**/*"))
         with open(summary_output, "a") as f:
-            f.write(render_summary_markdown(evaluated_analysis, repo=repo, revision=revision))
+            f.write(render_summary_markdown(evaluated_analysis, repo=repo, revision=revision, files=files))
         api.print_usage_summary()
         print("Analysis complete!")
 
