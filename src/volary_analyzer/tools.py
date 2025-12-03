@@ -1,3 +1,4 @@
+import datetime
 import glob as glob_module
 import subprocess
 from collections.abc import Callable
@@ -308,7 +309,7 @@ def web_answers_tool_factory(api: CompletionApi, model: str) -> Callable[[str], 
         :return: The answer to the question with sources
         """
         search_agent = Agent(
-            instruction=SEARCH_PROMPT.format(question=question),
+            instruction=SEARCH_PROMPT.format(question=question, date=datetime.datetime.now().isoformat()),
             tools=[web_search, fetch_page_content],
             model=model,
             api=api,
