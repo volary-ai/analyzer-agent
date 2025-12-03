@@ -38,6 +38,6 @@ class TestRenderSummaryMarkdown:
             in md
         )
         assert (
-            "Code file with multiple lines: [tools/build_langserver/langserver_main.go:43-54](https://github.com/thought-machine/please/blob/master/tools/build_langserver/langserver_main.go#L43-54)"
+            "Code file with multiple lines: [tools/build_langserver/langserver_main.go:43-54](https://github.com/thought-machine/please/blob/master/tools/build_langserver/langserver_main.go#L43-L54)"
             in md
         )

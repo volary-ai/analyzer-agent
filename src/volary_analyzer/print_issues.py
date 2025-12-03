@@ -182,7 +182,7 @@ def _file_source_link(ref: FileReference, repo: str = "", revision: str = ""):
 
 def _markdown_link(filename: str, start: str | None, end: str | None, repo: str, revision: str):
     """Render a Markdown link from a set of components."""
-    query = f"#L{start}-{end}" if end else f"#L{start}" if start else ""
+    query = f"#L{start}-L{end}" if end else f"#L{start}" if start else ""
     text = f"{filename}:{start}-{end}" if end else f"{filename}:{start}" if start else filename
     return f"[{text}](https://github.com/{repo}/blob/{revision}/{filename}{query})"
 
