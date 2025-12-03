@@ -14,9 +14,6 @@ is as follows:
 name: tech-debt-analyzer
 on:
   workflow_dispatch:
-concurrency:
-  group: analyzer
-  cancel-in-progress: false
 jobs:
   analyzer:
     name: analyzer
@@ -25,7 +22,7 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - uses: volary-ai/analyzer-agent@65a17b38da9ad954c20403fbbf5902679e15871f
+      - uses: volary-ai/analyzer-agent@v0.1.0
         with:
           completions-api-key: ${{ secrets.OPENROUTER_API_KEY }}
 ```
