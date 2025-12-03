@@ -41,11 +41,11 @@ def github_auth() -> str:
         return token
     if not shutil.which("gh"):
         raise RuntimeError(
-            "No GitHub authentication found. " "Set GITHUB_TOKEN/GH_TOKEN environment variable or install gh CLI."
+            "No GitHub authentication found. Set GITHUB_TOKEN/GH_TOKEN environment variable or install gh CLI."
         )
     token = subprocess.check_output(["gh", "auth", "token"], text=True, timeout=5).strip()
     if not token:
-        raise RuntimeError("No GitHub token returned from 'gh auth token'. " "Run 'gh auth login' to authenticate.")
+        raise RuntimeError("No GitHub token returned from 'gh auth token'. Run 'gh auth login' to authenticate.")
     return token
 
 

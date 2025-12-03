@@ -2,6 +2,8 @@
 Evaluation agent - scores technical debt issues for relevance and actionability.
 """
 
+from collections.abc import Callable
+
 import chromadb
 from rich.console import Console
 
@@ -13,13 +15,41 @@ from .output_schemas import (
     EvaluatedTechDebtIssue,
     Evaluation,
     EvaluationCriteria,
+    EvaluationInput,
+    IssueWithContext,
     TechDebtAnalysis,
+    TechDebtIssue,
 )
 from .prompts import EVAL_PROMPT, EVAL_SYSTEM_PROMPT
-from .tools import query_issues_factory
+from .tools import query_issues_factory, read_file, web_search_tool_factory
 from .vectorised_issue_search import github_vector_db
 
 console = Console(stderr=True)  # Output to stderr so stdout is clean for piping
+
+
+def contextualise_issue(issue: TechDebtIssue) -> IssueWithContext:
+    file_contents = {}
+    if issue.files:
+        for file_ref in issue.files:
+            try:
+                from_line = None
+                to_line = None
+                if file_ref.line_start is not None:
+                    from_line = str(max(1, file_ref.line_start - 5))
+                if file_ref.line_end is not None:
+                    to_line = str(file_ref.line_end + 5)
+
+                content = read_file(
+                    file_ref.path,
+                    from_line=from_line,
+                    to_line=to_line,
+                )
+                file_contents[file_ref.path] = content
+            except Exception as e:
+                console.print(f"[yellow]Warning: Could not read {file_ref.path}: {e}[/yellow]")
+                file_contents[file_ref.path] = f"Error reading file: {e}"
+
+    return IssueWithContext(issue=issue, file_contents=file_contents)
 
 
 def eval(
@@ -27,6 +57,7 @@ def eval(
     analysis: TechDebtAnalysis,
     api: CompletionApi,
     coordinator_model: str,
+    search_model: str,
     cache_dir: str,
 ) -> EvaluatedTechDebtAnalysis:
     if not analysis.issues:
@@ -38,7 +69,12 @@ def eval(
         style="cyan",
     )
 
-    tools = []
+    tools: list[Callable] = [
+        web_search_tool_factory(
+            api=api,
+            model=search_model,
+        )
+    ]
     github_issue_instruction = ""
     if repo_path := get_github_repo():
         chroma_client = chromadb.PersistentClient(path=cache_dir)
@@ -48,6 +84,12 @@ def eval(
         github_issue_instruction = "You MUST search for related issues with query_issues() to make sure you're not reporting issues that have already been considered."
     else:
         console.print("I notice this isn't a GitHub repo. We have no access to your issues so may report duplicates.")
+
+    issues_with_context = []
+    for issue in analysis.issues:
+        issues_with_context.append(contextualise_issue(issue))
+
+    evaluation_input = EvaluationInput(issues=issues_with_context)
 
     eval_agent = Agent(
         instruction=EVAL_SYSTEM_PROMPT.format(github_issue_instruction=github_issue_instruction),
@@ -59,7 +101,7 @@ def eval(
 
     console.print("[bold]Running evaluation...[/bold]", style="cyan")
     evaluations = eval_agent.run(
-        prompt=EVAL_PROMPT % analysis.model_dump_json(indent=2),
+        prompt=EVAL_PROMPT % evaluation_input.model_dump_json(indent=2),
         output_class=Evaluation,
     )
 

@@ -1,0 +1,276 @@
+{
+  "issues": [
+    {
+      "title": "Optimise remote dirBuilder child lookup to avoid repeated linear scans",
+      "short_description": "The remote CAS directory builder uses a `hasChild` helper that linearly scans `Directory.Directories` on each call, even though a `dirs` map exists.\n\nCode reference:\n- `src/remote/utils.go:434-452`:\n  ```go\n  func (b *dirBuilder) dir(dir, child string) *pb.Directory {\n      ...\n      // TODO(peterebden): The linear scan in hasChild is a bit suboptimal, we should\n      //                   really use the dirs map to determine this.\n      if child != \"\" && !hasChild(d, child) {\n          d.Directories = append(d.Directories, &pb.DirectoryNode{Name: child})\n      }\n      return d\n  }\n  ```\n\n",
+      "impact": "Not specified",
+      "recommended_action": "1. Extend `dirBuilder` to track child directory names per directory key (e.g. `map[string]map[string]struct{}` or `map[*pb.Directory]map[string]struct{}`) instead of scanning the slice:\n   - Maintain this map whenever `d.Directories` is appended to.\n2. Replace `hasChild(d, child)` calls with map lookups.\n3. Keep the existing representation in `d.Directories` unchanged to preserve wire format order, but ensure the map stays in sync.\n4. Add tests in `src/remote` that build deeply nested directory trees and assert:\n   - Correct directory structure is produced.\n   - Performance is acceptable (optional benchmark).\n\nThis improves performance of remote directory uploads, especially for repos with many nested directories and outputs.",
+      "files": [
+        {
+          "path": "src/remote/utils.go"
+        }
+      ],
+      "evaluation": {
+        "objective": true,
+        "actionable": true,
+        "production": true,
+        "local": true,
+        "impact_score": "medium",
+        "effort": "medium"
+      }
+    },
+    {
+      "title": "Refactor core/command_replacements to avoid panic-based error handling",
+      "short_description": "The command replacement logic in `src/core/command_replacements.go` relies heavily on `panic` and a deferred `recover` to propagate errors, with an explicit TODO to \"get rid of all the panics\". This pattern complicates control flow and makes error paths harder to follow.\n\nCode references:\n- `src/core/command_replacements.go:121-128`:\n  ```go\n  // TODO(peterebden): should probably just get rid of all the panics and thread errors around properly.\n  defer func() {\n      if r := recover(); r != nil {\n          err = fmt.Errorf(\"%s\", r)\n          log.Debug(string(debug.Stack()))\n      }\n  }()\n  ```\n- Multiple `panic(...)` calls in the same file (e.g. when parsing labels, hashing outputs, etc.).\n\n",
+      "impact": "Not specified",
+      "recommended_action": "1. Identify all `panic` call sites in `src/core/command_replacements.go` that represent expected error conditions (invalid labels, missing outputs, non-binary targets, etc.).\n2. Replace these panics with explicit error returns from the relevant functions:\n   - Adjust function signatures like `replaceSequencesInternal`, `replaceSequence`, and `checkAndReplaceSequence` to return `error` alongside their current values.\n3. Update all callers to handle these errors explicitly and return them up the call stack instead of relying on `recover`.\n4. Remove the defer-and-recover block in `replaceSequencesInternal` once panics have been eliminated.\n5. Add unit tests for representative failure paths (invalid label, non-executable dep, missing outputs, hash failures) to ensure meaningful error messages are propagated.\n\nThis modernises error handling in a core part of the build command expansion logic and reduces reliance on panics for non-fatal conditions.",
+      "files": [
+        {
+          "path": "src/core/command_replacements.go"
+        }
+      ],
+      "evaluation": {
+        "objective": true,
+        "actionable": true,
+        "production": true,
+        "local": true,
+        "impact_score": "medium",
+        "effort": "medium"
+      }
+    },
+    {
+      "title": "Replace context.TODO and hard‑coded timeout in BUILD exec() helper with a real context",
+      "short_description": "The BUILD-language `exec()` implementation in the ASP parser uses `context.TODO()` with a fixed 30s timeout for subprocesses. This is an antipattern and makes cancellation/timeout control difficult.\n\nCode reference:\n- `src/parse/asp/exec.go:77`:\n  ```go\n  ctx, cancel := context.WithTimeout(context.TODO(), 30*time.Second)\n  ```\n\n",
+      "impact": "Not specified",
+      "recommended_action": "1. Change `exec()` to accept a `context.Context` from its caller (likely the interpreter or parser) instead of constructing `context.TODO()` internally.\n   - Thread a context field through the interpreter or call sites so `exec()` can respect global cancellation (e.g. `plz` shutdown, Ctrl-C).\n2. Make the timeout configurable:\n   - Either use a config value from `state.Config.Parse` or a parameter passed to `exec()`.\n   - Only wrap the incoming context with a timeout if a non-zero timeout is configured.\n3. Add tests that:\n   - Verify `exec()` respects context cancellation (e.g. context cancelled before process completes).\n   - Verify the configured timeout actually stops long-running commands.\n\nThis removes a `context.TODO` in production code and gives users better control over long-running BUILD `exec()` calls.",
+      "files": [
+        {
+          "path": "src/parse/asp/exec.go"
+        }
+      ],
+      "evaluation": {
+        "objective": true,
+        "actionable": true,
+        "production": true,
+        "local": false,
+        "impact_score": "medium",
+        "effort": "medium"
+      }
+    },
+    {
+      "title": "Consolidate duplicated concurrency limiter implementations into a shared type",
+      "short_description": "There are multiple, slightly different implementations of a concurrency limiter/semaphore pattern in the codebase:\n- `type limiter chan struct{}` in `src/plz/plz.go`.\n- Another `type limiter chan struct{}` in `src/cache/http_cache.go`.\n- `type semaphore chan struct{}` in `src/parse/asp/parser.go` (used as a limiter).\n- A generic `Limiter` interface already defined in `src/cmap/cerrmap.go`.\n\nCode references:\n- `src/plz/plz.go:312-321` (TODO says \"We have about four of these now, commonise this somewhere\").\n- `src/cache/http_cache.go:31-38`.\n- `src/parse/asp/parser.go:20-24`.\n- `src/cmap/cerrmap.go:3-7` (`type Limiter interface { Acquire(); Release() }`).\n\n",
+      "impact": "Not specified",
+      "recommended_action": "1. Introduce a single shared implementation of a limiter type, e.g. in a small package (`src/concurrency/limiter.go` or similar), implementing the `cmap.Limiter` interface:\n   ```go\n   type ChannelLimiter chan struct{}\n   func (l ChannelLimiter) Acquire() { l <- struct{}{} }\n   func (l ChannelLimiter) Release() { <-l }\n   ```\n2. Replace:\n   - The local `limiter` type in `src/plz/plz.go` with the shared type.\n   - The local `limiter` in `src/cache/http_cache.go` with the shared type.\n   - The `semaphore` type in `src/parse/asp/parser.go` with the shared type (or alias it), ensuring it still satisfies `cmap.Limiter`.\n3. Update initialisation sites to construct the shared limiter with appropriate buffer sizes (threads, HTTP concurrency, parse threads).\n4. Remove the now-redundant local type definitions and associated TODO from `src/plz/plz.go`.\n5. Add small unit tests for the shared limiter type (Acquire/Release behaviour, blocking semantics).\n\nThis removes duplicated concurrency primitives and aligns everything with the existing `cmap.Limiter` abstraction.",
+      "files": [
+        {
+          "path": "src/plz/plz.go"
+        },
+        {
+          "path": "src/cache/http_cache.go"
+        },
+        {
+          "path": "src/parse/asp/parser.go"
+        },
+        {
+          "path": "src/parse/asp/interpreter.go"
+        },
+        {
+          "path": "src/cmap/cerrmap.go"
+        }
+      ],
+      "evaluation": {
+        "objective": true,
+        "actionable": true,
+        "production": true,
+        "local": false,
+        "impact_score": "medium",
+        "effort": "medium"
+      }
+    },
+    {
+      "title": "Update github.com/bazelbuild/remote-apis-sdks and use digest.NewFromMessage instead of manual proto marshaling",
+      "short_description": "The remote client currently pins `github.com/bazelbuild/remote-apis-sdks` to a 2022 commit and manually marshals protobufs to compute digests, with a comment that this is due to an older interface in the SDK.\n\nCode references:\n- `go.mod:11` – `github.com/bazelbuild/remote-apis-sdks v0.0.0-20221114180157-e62cf9b8696a`.\n- `src/remote/utils.go:228-231`:\n  ```go\n  // Can't use NewFromMessage because remote-apis-sdks is still using the older interface.\n  blob, _ := proto.Marshal(msg)\n  return digest.NewFromBlob(blob).ToProto()\n  ```\n\n",
+      "impact": "Not specified",
+      "recommended_action": "1. Investigate the latest `remote-apis-sdks` version to confirm support for computing digests directly from protobuf messages (e.g. `digest.NewFromMessage`).\n2. Bump the dependency in `go.mod` and `third_party/go/BUILD` to a recent compatible version.\n3. Refactor `Client.digestMessage` to use the new API, eliminating the manual `proto.Marshal` and the associated TODO:\n   ```go\n   func (c *Client) digestMessage(msg proto.Message) *pb.Digest {\n       return digest.NewFromMessage(msg).ToProto()\n   }\n   ```\n4. Run `go test ./src/remote/...` to ensure the change doesn’t break digest compatibility (especially cache hits and remote execution with existing servers).\n5. Remove any stale comments referencing the older interface.\n\nThis modernises a key remote dependency and simplifies digest computation, reducing the chance of subtle incompatibilities.",
+      "files": [
+        {
+          "path": "go.mod"
+        },
+        {
+          "path": "third_party/go/BUILD"
+        },
+        {
+          "path": "src/remote/utils.go"
+        }
+      ],
+      "evaluation": {
+        "objective": true,
+        "actionable": true,
+        "production": true,
+        "local": false,
+        "impact_score": "medium",
+        "effort": "medium"
+      }
+    },
+    {
+      "title": "Clean up deprecated REAPI Output*Symlinks usage and associated nolint directives",
+      "short_description": "The remote client still handles `OutputFileSymlinks` and `OutputDirectorySymlinks` in ActionResult and suppresses staticcheck warnings with TODOs indicating these should be removed after REAPI 2.1.\n\nCode references:\n- `src/remote/action.go:442-447`:\n  ```go\n  // TODO(jpoole): remove these two after REAPI 2.1\n  for _, o := range ar.OutputFileSymlinks { //nolint:staticcheck\n      ret[o.Path] = true\n  }\n  for _, o := range ar.OutputDirectorySymlinks { //nolint:staticcheck\n      ret[o.Path] = true\n  }\n  ```\n- Additional `//nolint:staticcheck` usages on these fields in `src/remote/utils.go`.\n\n",
+      "impact": "Not specified",
+      "recommended_action": "1. Confirm the status of REAPI 2.1 support in the ecosystem and in the version of `github.com/bazelbuild/remote-apis` used (currently a 2024 commit).\n2. Decide on a compatibility strategy:\n   - If all supported servers implement the new fields, remove handling of the deprecated `Output*Symlinks` fields entirely.\n   - If some servers still require them, consider gating their use behind a config flag (e.g. `state.Config.Remote.LegacySymlinks`).\n3. Update `outputsForActionResult` and any other relevant code paths to rely on the non-deprecated fields when possible.\n4. Remove the `nolint:staticcheck` comments once use of deprecated fields is eliminated or appropriately guarded.\n5. Add tests in `src/remote/remote_test.go` to cover ActionResult handling both with and without symlink fields to ensure continued correctness.\n\nThis resolves lingering deprecation and linter suppression around REAPI output symlink fields.",
+      "files": [
+        {
+          "path": "src/remote/action.go"
+        },
+        {
+          "path": "src/remote/utils.go"
+        }
+      ],
+      "evaluation": {
+        "objective": true,
+        "actionable": true,
+        "production": true,
+        "local": false,
+        "impact_score": "medium",
+        "effort": "medium"
+      }
+    },
+    {
+      "title": "Use atomic.Int64 counters in exec.Parallel now that Go 1.19+ is required",
+      "short_description": "The parallel execution helper in `src/exec/exec.go` still uses plain `int64` variables with `sync/atomic` functions and carries a TODO to migrate to `atomic.Int64` once Go 1.19 is required.\n\nCode reference:\n- `src/exec/exec.go:46-75` (comment: `// TODO(peterebden): Change these to atomic.Int64 when we're happy to require Go 1.19`)\n\n",
+      "impact": "Not specified",
+      "recommended_action": "1. Replace the `done` and `started` counters in `Parallel` with `atomic.Int64` fields (or local variables) instead of `int64` plus pointer arithmetic.\n   - Example: `var done, started atomic.Int64`.\n   - Update all increments/reads to use `Add` and `Load` methods (e.g. `started.Add(1)`, `done.Add(1)`, `started.Load()`).\n2. Ensure imports are updated to use `sync/atomic`'s typed API as needed.\n3. Run `go test ./...` to confirm behaviour is unchanged.\n\nThis cleans up low-level concurrency code and removes a resolved TODO with minimal risk.",
+      "files": [
+        {
+          "path": "src/exec/exec.go"
+        }
+      ],
+      "evaluation": {
+        "objective": true,
+        "actionable": true,
+        "production": true,
+        "local": true,
+        "impact_score": "low",
+        "effort": "low"
+      }
+    },
+    {
+      "title": "Remove test-only BuildTarget.resolveDependency from production code",
+      "short_description": "`BuildTarget.resolveDependency` in `src/core/build_target.go` is marked as being used only by tests. Keeping it on the production type increases the public surface and can be misleading.\n\nCode references:\n- `src/core/build_target.go:1117-1125`:\n  ```go\n  // resolveDependency resolves a particular dependency on a target.\n  // TODO(jpoole): this is only used by tests: remove\n  func (target *BuildTarget) resolveDependency(label BuildLabel, dep *BuildTarget) {\n      ...\n  }\n  ```\n- `grep` shows it is only used in tests/benchmarks:\n  - `src/core/build_target_test.go`\n  - `src/core/utils_benchmark_test.go`\n  - `src/core/utils_test.go`\n  - `src/core/stamp_test.go`\n\n",
+      "impact": "Not specified",
+      "recommended_action": "1. Introduce a small test helper in `src/core/build_target_test.go` (or a dedicated `_test.go` file) that manipulates `BuildTarget` dependencies for test setup.\n   - This can use unexported fields via constructors or helper functions defined in `_test.go`.\n2. Refactor all tests that call `target.resolveDependency` to use the new helper function instead.\n3. Once no non-test code refers to it, delete `resolveDependency` from `build_target.go`.\n4. If `dependencyInfo` is only needed for tests after this change, consider moving any related helpers into `_test.go` as well.\n5. Run `go test ./src/core/...` to validate that behaviour is unchanged.\n\nThis tightens the production API surface of `BuildTarget` and keeps test-only helpers out of the main code path.",
+      "files": [
+        {
+          "path": "src/core/build_target.go"
+        },
+        {
+          "path": "src/core/build_target_test.go"
+        },
+        {
+          "path": "src/core/utils_test.go"
+        },
+        {
+          "path": "src/core/stamp_test.go"
+        },
+        {
+          "path": "src/core/utils_benchmark_test.go"
+        }
+      ],
+      "evaluation": {
+        "objective": true,
+        "actionable": true,
+        "production": true,
+        "local": false,
+        "impact_score": "low",
+        "effort": "low"
+      }
+    },
+    {
+      "title": "Phase out insecure PGP-based release signing and dependency on github.com/ProtonMail/go-crypto",
+      "short_description": "The release signer still depends on `github.com/ProtonMail/go-crypto/openpgp` for PGP-based signatures, but the code comments explicitly state this path is insecure and only kept for helping older Please versions update. There is now a preferred sigstore-based signing path.\n\nCode references:\n- `go.mod:8` – `github.com/ProtonMail/go-crypto v0.0.0-20210920135941-2c5829bbf927`.\n- `tools/release_signer/signer/signer.go`:\n  - Import of `github.com/ProtonMail/go-crypto/openpgp`.\n  - Comment on `SignFileWithPGP`:\n    ```go\n    // SignFileWithPGP ... This method is insecure ...\n    // This signature is only included to allow older Please versions to update.\n    ```\n\n",
+      "impact": "Not specified",
+      "recommended_action": "1. Identify which current workflows (if any) still rely on `SignFileWithPGP` and PGP signatures for upgrades.\n2. Design a deprecation and removal plan:\n   - Introduce a feature flag or configuration that disables PGP signing by default while still allowing an opt-in for a transition period, or\n   - Gate PGP signing behind a build tag for a dedicated compatibility binary.\n3. Update CLI / tooling documentation to recommend sigstore-based signing exclusively.\n4. After an agreed deprecation window, remove:\n   - `SignFileWithPGP` and its helper functions from `tools/release_signer/signer/signer.go`.\n   - The `github.com/ProtonMail/go-crypto/openpgp` import.\n   - The `github.com/ProtonMail/go-crypto` requirement from `go.mod` and `go.sum`.\n5. Add tests (or update existing ones) to ensure releases can still be signed and verified using the sigstore-based path only.\n\nThis addresses a known insecure code path and removes an outdated cryptography dependency.",
+      "files": [
+        {
+          "path": "go.mod"
+        },
+        {
+          "path": "tools/release_signer/signer/signer.go"
+        }
+      ],
+      "evaluation": {
+        "objective": true,
+        "actionable": false,
+        "production": true,
+        "local": false,
+        "impact_score": "high",
+        "effort": "high"
+      }
+    },
+    {
+      "title": "Remove core.PathExists alias and migrate call sites to fs.PathExists",
+      "short_description": "`core.PathExists` in `src/core/utils.go` is a thin alias for `fs.PathExists` and is marked with a TODO to remove and migrate.\n\nCode reference:\n- `src/core/utils.go:530-534`:\n  ```go\n  // PathExists is an alias to fs.PathExists.\n  // TODO(peterebden): Remove and migrate everything over.\n  func PathExists(filename string) bool {\n      return fs.PathExists(filename)\n  }\n  ```\n- Numerous call sites across `core`, `build`, `test`, `cache`, etc (see `grep \"core.PathExists\"`).\n\n",
+      "impact": "Not specified",
+      "recommended_action": "1. Replace all usage of `core.PathExists` with `fs.PathExists` (or `core/fs.PathExists` where appropriate):\n   - For example, in `src/core/build_target.go`, `src/test/test_step.go`, `src/build/build_step.go`, `src/cache/dir_cache.go`, etc.\n2. Once all call sites are updated, delete the `PathExists` function from `src/core/utils.go`.\n3. Run `go vet` and `go test ./...` to ensure there are no lingering references.\n\nThis removes duplicated functionality between `core` and `fs`, making file system helpers live in a single place.",
+      "files": [
+        {
+          "path": "src/core/utils.go"
+        },
+        {
+          "path": "src/fs/fs.go"
+        },
+        {
+          "path": "src/build/build_step.go"
+        },
+        {
+          "path": "src/test/test_step.go"
+        },
+        {
+          "path": "src/cache/dir_cache.go"
+        },
+        {
+          "path": "src/update/update.go"
+        }
+      ],
+      "evaluation": {
+        "objective": true,
+        "actionable": true,
+        "production": true,
+        "local": false,
+        "impact_score": "low",
+        "effort": "medium"
+      }
+    },
+    {
+      "title": "Plan migration away from gopkg.in/op/go-logging.v1 to a modern logging backend",
+      "short_description": "The project’s logging stack is built on top of `gopkg.in/op/go-logging.v1`, a library that is relatively old and less commonly used today. It is used extensively via `src/cli/logging.go` and related tooling.\n\nCode references:\n- `go.mod:59` – `gopkg.in/op/go-logging.v1`.\n- Imports in:\n  - `src/cli/logging.go`\n  - `src/cli/logging/logging.go`\n  - `tools/build_langserver/langserver_main.go`\n  - `tools/please_shim/main.go`\n  - Several tests (e.g. `src/build/build_step_test.go`, `src/parse/asp/logging_test.go`).\n\n",
+      "impact": "Not specified",
+      "recommended_action": "1. Choose a target logging backend for the future (e.g. structured logging via `zap`, `zerolog`, or Go’s standard `log/slog`), aligned with project goals.\n2. Define a small, internal logging facade interface (if one doesn’t already exist) that wraps the chosen backend and exposes only the needed operations (levels, formatting, backends).\n3. Incrementally migrate modules to use the new facade instead of `go-logging` directly:\n   - Start with non-core tools (`tools/build_langserver`, `tools/please_shim`).\n   - Then update `src/cli/logging.go` and the main application logging initialisation.\n4. Provide adapters where necessary to maintain existing behaviour (e.g. coloured output, interactive logging UI in `LogBackend`).\n5. After migration, remove the `gopkg.in/op/go-logging.v1` dependency from `go.mod` and `go.sum`, and simplify any compatibility code.\n6. Update tests that rely on `go-logging` types to use the new facade.\n\nThis is a larger refactor but reduces reliance on an aging logging library and can enable structured, more observable logging going forward.",
+      "files": [
+        {
+          "path": "go.mod"
+        },
+        {
+          "path": "src/cli/logging.go"
+        },
+        {
+          "path": "src/cli/logging/logging.go"
+        },
+        {
+          "path": "tools/build_langserver/langserver_main.go"
+        },
+        {
+          "path": "tools/please_shim/main.go"
+        }
+      ],
+      "evaluation": {
+        "objective": false,
+        "actionable": true,
+        "production": true,
+        "local": false,
+        "impact_score": "low",
+        "effort": "high"
+      }
+    }
+  ]
+}

@@ -240,7 +240,7 @@ class Agent:
         self._maybe_update_user(tool_calls)
         self._maybe_set_todos(tool_calls)
 
-        # Filter to actual tool calls (excluding pseudo-tools)
+        # Filter to actual tool calls (excluding pseudo-tools like delegate_task, update_user, and set_todos)
         actual_tool_calls = [
             tc for tc in tool_calls if tc.function.name not in [_UPDATE_USER_FUNC_NAME, _SET_TODOS_FUNC_NAME]
         ]
@@ -248,25 +248,32 @@ class Agent:
         if len(actual_tool_calls) == 0:
             return
 
-        # Execute all tools in parallel using ThreadPoolExecutor
+        results = []
+        tool_call_futures = []
         with ThreadPoolExecutor(max_workers=min(len(actual_tool_calls), 10)) as executor:
-            # Submit all tool calls
-            future_to_call = {
-                executor.submit(self._call_tool, tool_map[tc.function.name], tc): tc for tc in actual_tool_calls
-            }
+            for tc in actual_tool_calls:
+                tool = tool_map.get(tc.function.name)
+                if not tool:
+                    results.append(
+                        ToolCallResult(
+                            call=tc,
+                            error=Exception(f"No tool called {tc.function.name}"),
+                            message={
+                                "role": "tool",
+                                "tool_call_id": tc.id,
+                                "content": f"Error: Unknown tool '{tc.function.name}'. Available tools: {', '.join(tool_map.keys())}",
+                            },
+                        )
+                    )
+                else:
+                    tool_call_futures.append(executor.submit(self._call_tool, tool, tc))
 
-            # Collect results as they complete
-            results = []
-            for future in as_completed(future_to_call):
+            for future in as_completed(tool_call_futures):
                 result = future.result()
                 results.append(result)
 
-            # Sort by tool_call_id to maintain deterministic ordering
             results.sort(key=lambda r: r.tool_id)
-
-            # Print all results sequentially
             for result in results:
-                # Print tool execution info (without agent name, use task if available)
                 task_prefix = f"[{self.task}] " if self.task else ""
                 console.print(f"\n[dim]{task_prefix}Executing tool: {result.tool_name}[/dim]")
                 console.print(f"[dim]Arguments: {json.dumps(result.tool_args, indent=2)}[/dim]")
@@ -279,7 +286,6 @@ class Agent:
                         f"[dim]Result: {escape(result_preview)}{'...' if len(result.message['content']) > 200 else ''}[/dim]"
                     )
 
-            # Add all messages to the message list
             self.messages.extend([r.message for r in results])
 
     def _render_todos(self) -> None:

@@ -1,14 +1,24 @@
 #!/usr/bin/env python3
 import json
+import re
 import sys
+import urllib.parse
+from collections.abc import Iterable
 from typing import Any
 
 from rich.console import Console
 from rich.table import Table
 
-from .output_schemas import EvaluatedTechDebtAnalysis, TechDebtAnalysis
+from .output_schemas import EvaluatedTechDebtAnalysis, FileReference, TechDebtAnalysis, TechDebtIssue
 
 console = Console(stderr=True)
+
+# Recognises a file with optional lines on the end
+# e.g. src/core/logging.go:53-65
+# or   go.mod:59
+_file_search_re = re.compile(
+    r"(?:([^\s`,:;]+/[^\s`,:;]+)(?::([0-9]+))?(?:-([0-9]+))?|([^\s`,:;]+):([0-9]+)(?:-([0-9]+))?)"
+)
 
 
 def _format_eval_key(key: str) -> str:
@@ -44,7 +54,7 @@ def _format_eval_value(key: str, value: Any) -> str:
     return str(value)
 
 
-def print_issues(analysis: TechDebtAnalysis | EvaluatedTechDebtAnalysis, *, width: int | None = None):
+def print_issues(analysis: TechDebtAnalysis | EvaluatedTechDebtAnalysis, *, width: int | None = None) -> None:
     """Print tech debt issues in a formatted table.
 
     Args:
@@ -57,6 +67,7 @@ def print_issues(analysis: TechDebtAnalysis | EvaluatedTechDebtAnalysis, *, widt
     table.add_column("Title", style="cyan bold", width=30, no_wrap=False)
     table.add_column("Description", style="white", width=40, no_wrap=False)
     table.add_column("Action", style="green", width=35, no_wrap=False)
+    table.add_column("Impact", style="green", width=35, no_wrap=False)
 
     # Check if this is evaluated analysis by checking if first issue has evaluation
     has_evaluation = isinstance(analysis, EvaluatedTechDebtAnalysis)
@@ -67,7 +78,7 @@ def print_issues(analysis: TechDebtAnalysis | EvaluatedTechDebtAnalysis, *, widt
 
     for issue in analysis.issues:
         # Format files list
-        files_display = "\n".join(issue.files) if issue.files else "[dim]-[/dim]"
+        files_display = "\n".join([str(file) for file in issue.files]) if issue.files else "[dim]-[/dim]"
 
         if has_evaluation:
             # Format evaluation criteria
@@ -78,21 +89,165 @@ def print_issues(analysis: TechDebtAnalysis | EvaluatedTechDebtAnalysis, *, widt
                 eval_display += f"\nDuplicates: [red]{duplicated_by_display}[/red]"
             table.add_row(
                 issue.title,
-                issue.short_description + "\n",
-                issue.recommended_action + "\n",
+                _highlight_files(issue.short_description) + "\n",
+                _highlight_files(issue.recommended_action) + "\n",
+                issue.impact + "\n",
                 eval_display,
                 files_display,
             )
         else:
             table.add_row(
                 issue.title,
-                issue.short_description + "\n",
-                issue.recommended_action + "\n",
+                _highlight_files(issue.short_description) + "\n",
+                _highlight_files(issue.recommended_action) + "\n",
+                issue.impact + "\n",
                 files_display,
             )
 
     console.print(table)
     console.print(f"\n[bold]Total issues found: {len(analysis.issues)}[/bold]")
+
+
+def _highlight_files(text: str) -> str:
+    """Highlights any files in the given text in cyan."""
+    return _file_search_re.sub(lambda m: "[cyan]" + m.group(0) + "[/cyan]", text)
+
+
+def render_summary_markdown(
+    analysis: TechDebtAnalysis | EvaluatedTechDebtAnalysis,
+    repo: str = "",
+    revision: str = "",
+    files: set = frozenset(),
+) -> str:
+    """Renders a Markdown table (GitHub flavour) containing the given analysis issues.
+
+    If repo and revision are provided, it will render GitHub source links for files.
+    """
+
+    # Header rows
+    if isinstance(analysis, EvaluatedTechDebtAnalysis):
+        rows = [
+            "| Title       | Description    | Action         | Evaluation        | Files              | Create Issue       |",
+            "| ----------- | -------------- | -------------- | ----------------- | ------------------ | ------------------ |",
+        ]
+    else:
+        rows = [
+            "| Title       | Description    | Action         | Files              | Create Issue       |",
+            "| ----------- | -------------- | -------------- | ------------------ | ------------------ |",
+        ]
+
+    rows += [
+        "| " + " | ".join(_render_summary_markdown_row(issue, repo, revision, files)) + " |"
+        for issue in analysis.issues
+    ]
+    return "\n".join(rows)
+
+
+def _render_summary_markdown_row(
+    issue: TechDebtIssue, repo: str = "", revision: str = "", files: set = frozenset()
+) -> Iterable[str]:
+    yield _escape_newlines(issue.title)
+    yield _escape_newlines(_add_source_links(issue.short_description, repo, revision, files))
+    yield _escape_newlines(_add_source_links(issue.recommended_action, repo, revision, files))
+
+    if evaluation := getattr(issue, "evaluation", None):
+        # Format evaluation criteria
+        eval_data = evaluation.model_dump()
+        eval_display = "\n".join(f"{_format_eval_key(k)}: {_format_eval_value(k, v)}" for k, v in eval_data.items())
+        yield _escape_newlines(eval_display)
+
+    files_display = (
+        "\n".join([_file_source_link(file, repo, revision, files) for file in issue.files]) if issue.files else "-"
+    )
+    yield _escape_newlines(files_display)
+    yield _create_issue_link(issue, repo, revision)
+
+
+def _escape_newlines(str: str) -> str:
+    return str.replace("\n", "<br>")
+
+
+def _add_source_links(text: str, repo: str = "", revision: str = "", files: set = frozenset()) -> str:
+    """Add Markdown links to source files found in the given text."""
+    return _file_search_re.sub(
+        lambda m: _markdown_link(
+            # The sub-groups occur in two places in the regex so we have to deal with both
+            filename=m.group(1) or m.group(4),
+            start=m.group(2) or m.group(5),
+            end=m.group(3) or m.group(6),
+            repo=repo,
+            revision=revision,
+        )
+        if repo and revision and m.group(1) in files or m.group(4) in files
+        else m.group(0),
+        text,
+    )
+
+
+def _file_source_link(ref: FileReference, repo: str = "", revision: str = "", files: set = frozenset()) -> str:
+    """Render a Markdown link from one of our file objects."""
+    return (
+        _markdown_link(
+            filename=ref.path,
+            start=ref.line_start,
+            end=ref.line_end,
+            repo=repo,
+            revision=revision,
+        )
+        if repo and revision and ref.path in files
+        else str(ref)
+    )
+
+
+def _create_issue_link(issue: TechDebtIssue, repo: str, revision: str) -> str:
+    escaped_title = urllib.parse.quote_plus(issue.title)
+    escaped_body = urllib.parse.quote_plus(
+        _add_source_links(
+            f"""
+# Description
+
+{issue.short_description}
+
+# Impact
+
+{issue.impact}
+
+# Recommended Action
+
+{issue.recommended_action}
+
+- powered by [volary](https://volary.ai)
+""",
+            repo,
+            revision,
+        )
+    )
+    return f"[Create Issue](https://github.com/{repo}/issues/new?title={escaped_title}&body={escaped_body})"
+
+
+def _markdown_link(filename: str, start: str | None, end: str | None, repo: str, revision: str) -> str:
+    """Render a Markdown link from a set of components."""
+    query = f"#L{start}-L{end}" if end else f"#L{start}" if start else ""
+    text = f"{filename}:{start}-{end}" if end else f"{filename}:{start}" if start else filename
+    return f"[{text}](https://github.com/{repo}/blob/{revision}/{filename}{query})"
+
+
+def _format_eval_key(key: str) -> str:
+    # "impact_score" -> "Impact Score"
+    return key.replace("_", " ").title()
+
+
+def _format_eval_value(key: str, value) -> str:
+    # Booleans: Yes/No
+    if isinstance(value, bool):
+        return "Yes" if value else "No"
+
+    if key == "impact_score" or key == "effort":
+        score = str(value).lower()
+        return score.title()
+
+    # Fallback for anything else
+    return str(value)
 
 
 if __name__ == "__main__":

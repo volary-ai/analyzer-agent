@@ -13,6 +13,7 @@ from .completion_api import CompletionApi
 from .eval import eval
 from .output_schemas import EvaluatedTechDebtAnalysis, TechDebtAnalysis
 from .print_issues import print_issues
+from .tools import web_search_tool_factory
 
 console = Console(stderr=True)
 
@@ -56,6 +57,7 @@ def main() -> int:
             "analyze",
             "eval",
             "print",
+            "search",
         ],
     )
     args = parser.parse_args()
@@ -83,6 +85,7 @@ def main() -> int:
                 api=api,
                 analysis=analysis,
                 coordinator_model=args.coordinator_model,
+                search_model=args.delegate_model,
                 cache_dir=args.cache_dir,
             )
             print_issues(evaluated_analysis)
@@ -104,6 +107,7 @@ def main() -> int:
                 analysis=analysis,
                 coordinator_model=args.coordinator_model,
                 cache_dir=args.cache_dir,
+                search_model=args.delegate_model,
             )
             print(evaluated_analysis.model_dump_json(indent=2))
             api.print_usage_summary()
@@ -114,6 +118,11 @@ def main() -> int:
             except ValidationError:
                 analysis = TechDebtAnalysis.model_validate_json(raw)
             print_issues(analysis)
+        case "search":
+            console.print("[bold green]Searching results...[/bold green]")
+            tool = web_search_tool_factory(api=api, model=args.delegate_model)
+            question = sys.stdin.read().strip()
+            print(tool(question))
     return 0
 
 

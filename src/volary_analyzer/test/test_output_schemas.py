@@ -56,7 +56,7 @@ class TestBackwardsCompatibility:
             "short_description": "Brief description",
             "impact": "High impact",
             "recommended_action": "Fix it in file.py:123",
-            "files": ["file.py"],
+            "files": [{"path": "file.py"}],
         }
 
         issue = TechDebtIssue.model_validate(new_format)
@@ -65,4 +65,36 @@ class TestBackwardsCompatibility:
         assert issue.short_description == "Brief description"
         assert issue.impact == "High impact"
         assert issue.recommended_action == "Fix it in file.py:123"
-        assert issue.files == ["file.py"]
+        assert len(issue.files) == 1
+        assert issue.files[0].path == "file.py"
+        assert issue.files[0].line_start is None
+        assert issue.files[0].line_end is None
+
+    def test_file_reference_formatting(self) -> None:
+        """Test that FileReference formats correctly."""
+        data = {
+            "title": "Test Issue",
+            "short_description": "Test",
+            "files": [
+                {"path": "file.py"},
+                {"path": "other.py", "line_start": 123},
+                {"path": "third.py", "line_start": 10, "line_end": 20},
+            ],
+        }
+
+        issue = TechDebtIssue.model_validate(data)
+
+        assert len(issue.files) == 3
+        assert issue.files[0].path == "file.py"
+        assert issue.files[0].line_start is None
+        assert str(issue.files[0]) == "file.py"
+
+        assert issue.files[1].path == "other.py"
+        assert issue.files[1].line_start == 123
+        assert issue.files[1].line_end is None
+        assert str(issue.files[1]) == "other.py:123"
+
+        assert issue.files[2].path == "third.py"
+        assert issue.files[2].line_start == 10
+        assert issue.files[2].line_end == 20
+        assert str(issue.files[2]) == "third.py:10-20"

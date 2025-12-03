@@ -8,7 +8,8 @@ import pathspec
 
 from .agent import Agent
 from .completion_api import CompletionApi
-from .prompts import ANALYSIS_DELEGATE_PROMPT, ANALYZER_PROMPT
+from .prompts import ANALYSIS_DELEGATE_PROMPT, ANALYZER_PROMPT, SEARCH_PROMPT
+from .search import ddg_search, fetch_page_content
 
 _LS_LIMIT = 100
 _GLOB_LIMIT = 100
@@ -27,18 +28,24 @@ def ls(glob: str) -> str:
     :param glob: The glob pattern to match files with. Supports the ** extension for recursive search.
     :return: a list of matching paths
     """
-    # Use glob with recursive=True to support ** patterns
-    matches = glob_module.glob(glob, recursive=True)
-    # Filter out ignored paths
-    filtered = [m for m in matches if not _should_ignore(m)]
-
-    ret = sorted(filtered)
+    ret = ls_all(glob)
     if len(ret) > _LS_LIMIT:
-        ret_str = "\n".join(ret)
+        ret_str = "\n".join(ret[:_LS_LIMIT])
         # limit results to avoid filling the context window
         return f"found {len(ret)} results. Showing first {_LS_LIMIT}: \n{ret_str}"
     # Sort for consistent ordering
     return "\n".join(ret)
+
+
+def ls_all(glob: str) -> list[str]:
+    """Lists all files under a directory.
+
+    Lower-level than ls and not designed for an LLM to wield directly.
+    """
+    # Use glob with recursive=True to support ** patterns
+    matches = glob_module.glob(glob, recursive=True)
+    # Filter out ignored paths
+    return sorted(m for m in matches if not _should_ignore(m))
 
 
 def _should_ignore(path: str) -> bool:
@@ -85,7 +92,7 @@ def _get_gitignore_spec():
     return _gitignore_spec
 
 
-def read_file(path: str, from_line: str = None, to_line: str = None) -> str:
+def read_file(path: str, from_line: int = None, to_line: int = None) -> str:
     """
     Reads the contents of the file at the provider path (relative to the working directory).
     Includes git blame annotations showing line numbers and dates when each line was changed.
@@ -116,11 +123,11 @@ def read_file(path: str, from_line: str = None, to_line: str = None) -> str:
 
             # Apply line range filtering
             if from_line is not None or to_line is not None:
-                start = (int(from_line) - 1) if from_line is not None else 0
-                end = int(to_line) if to_line is not None else len(lines)
+                start = (from_line - 1) if from_line is not None else 0
+                end = to_line if to_line is not None else len(lines)
                 lines = lines[start:end]
                 # Adjust line numbers to match the actual line numbers in the file
-                start_num = int(from_line) if from_line is not None else 1
+                start_num = from_line if from_line is not None else 1
                 return "\n".join(f"{i:4d}→{line.rstrip()}" for i, line in enumerate(lines, start=start_num))
 
             return "\n".join(f"{i:4d}→{line.rstrip()}" for i, line in enumerate(lines, start=1))
@@ -278,3 +285,33 @@ def delegate_tool_factory(api: CompletionApi, model: str, tools: list[Callable],
         return delegate_agent.run(task=task, prompt=prompt)
 
     return delegate_task
+
+
+def web_search_tool_factory(api: CompletionApi, model: str) -> Callable[[str], str]:
+    def web_search(question: str) -> str:
+        """
+        Searches the web for the answer to a question using an autonomous sub-agent.
+
+        The sub-agent can run multiple searches and selectively fetch web pages to find the answer.
+        This tool is ideal for looking up factual information, current versions, or online data.
+
+        Examples:
+            web_search("What is the latest Go version?")
+            web_search("What are the best practices for Python asyncio in 2024?")
+
+        It is highly recommended to use this tool to verify that a library, framework, or language is actually out of
+        date.
+
+        :param question: The question to answer using web search
+        :return: The answer to the question with sources
+        """
+        search_agent = Agent(
+            instruction=SEARCH_PROMPT.format(question=question),
+            tools=[ddg_search, fetch_page_content],
+            model=model,
+            api=api,
+            agent_name="Web Search",
+        )
+        return search_agent.run()
+
+    return web_search
