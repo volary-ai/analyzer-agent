@@ -5,7 +5,7 @@ from bs4 import BeautifulSoup
 from ddgs import DDGS
 
 
-def ddg_search(query: str, max_results: int = 10) -> str:
+def web_search(query: str, max_results: int = 10) -> str:
     """
     Search DuckDuckGo and return a list of results with titles and URLs.
 

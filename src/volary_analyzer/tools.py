@@ -9,7 +9,7 @@ import pathspec
 from .agent import Agent
 from .completion_api import CompletionApi
 from .prompts import ANALYSIS_DELEGATE_PROMPT, ANALYZER_PROMPT, SEARCH_PROMPT
-from .search import ddg_search, fetch_page_content
+from .search import fetch_page_content, web_search
 
 _LS_LIMIT = 100
 _GLOB_LIMIT = 100
@@ -287,8 +287,8 @@ def delegate_tool_factory(api: CompletionApi, model: str, tools: list[Callable],
     return delegate_task
 
 
-def web_search_tool_factory(api: CompletionApi, model: str) -> Callable[[str], str]:
-    def web_search(question: str) -> str:
+def web_answers_tool_factory(api: CompletionApi, model: str) -> Callable[[str], str]:
+    def web_answers(question: str) -> str:
         """
         Searches the web for the answer to a question using an autonomous sub-agent.
 
@@ -296,22 +296,24 @@ def web_search_tool_factory(api: CompletionApi, model: str) -> Callable[[str], s
         This tool is ideal for looking up factual information, current versions, or online data.
 
         Examples:
-            web_search("What is the latest Go version?")
-            web_search("What are the best practices for Python asyncio in 2024?")
+            web_answers("What is the latest Go version?")
+            web_answers("What are the key migration points for psycopg3?")
 
         It is highly recommended to use this tool to verify that a library, framework, or language is actually out of
         date.
+
+        You should use this tool to answer well scoped questions, that can be answered in a few searches.
 
         :param question: The question to answer using web search
         :return: The answer to the question with sources
         """
         search_agent = Agent(
             instruction=SEARCH_PROMPT.format(question=question),
-            tools=[ddg_search, fetch_page_content],
+            tools=[web_search, fetch_page_content],
             model=model,
             api=api,
             agent_name="Web Search",
         )
         return search_agent.run()
 
-    return web_search
+    return web_answers
