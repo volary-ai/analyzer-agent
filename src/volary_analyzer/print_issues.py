@@ -146,25 +146,25 @@ def render_summary_markdown(
 def _render_summary_markdown_row(
     issue: TechDebtIssue, repo: str = "", revision: str = "", files: set = frozenset()
 ) -> Iterable[str]:
-    yield _escape_newlines(issue.title)
-    yield _escape_newlines(_add_source_links(issue.short_description, repo, revision, files))
-    yield _escape_newlines(_add_source_links(issue.recommended_action, repo, revision, files))
+    yield _escape(issue.title)
+    yield _escape(_add_source_links(issue.short_description, repo, revision, files))
+    yield _escape(_add_source_links(issue.recommended_action, repo, revision, files))
 
     if evaluation := getattr(issue, "evaluation", None):
         # Format evaluation criteria
         eval_data = evaluation.model_dump()
         eval_display = "\n".join(f"{_format_eval_key(k)}: {_format_eval_value(k, v)}" for k, v in eval_data.items())
-        yield _escape_newlines(eval_display)
+        yield _escape(eval_display)
 
     files_display = (
         "\n".join([_file_source_link(file, repo, revision, files) for file in issue.files]) if issue.files else "-"
     )
-    yield _escape_newlines(files_display)
+    yield _escape(files_display)
     yield _create_issue_link(issue, repo, revision)
 
 
-def _escape_newlines(str: str) -> str:
-    return str.replace("\n", "<br>")
+def _escape(str: str) -> str:
+    return str.replace("\n", "<br>").replace("|", "\\|")
 
 
 def _add_source_links(text: str, repo: str = "", revision: str = "", files: set = frozenset()) -> str:
