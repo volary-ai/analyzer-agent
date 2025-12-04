@@ -52,7 +52,7 @@ class TestReadFile:
 
     def test_read_file_with_git_blame_testdata(self) -> None:
         """Test reading a tracked file includes git blame information."""
-        result = read_file("src/volary_analyzer/test/testdata/please-issues.json", from_line="1", to_line="10")
+        result = read_file("src/volary_analyzer/test/testdata/please-issues.json", from_line=1, to_line=10)
 
         # Should contain JSON content
         assert "{" in result or "issues" in result
@@ -72,7 +72,7 @@ class TestReadFile:
 
     def test_read_file_testdata_line_range(self) -> None:
         """Test reading a specific line range from testdata."""
-        result = read_file("src/volary_analyzer/test/testdata/volary-v1.json", from_line="1", to_line="20")
+        result = read_file("src/volary_analyzer/test/testdata/volary-v1.json", from_line=1, to_line=20)
 
         lines = result.split("\n")
         # Should have content but be limited

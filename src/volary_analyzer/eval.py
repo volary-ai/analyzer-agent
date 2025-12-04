@@ -35,9 +35,9 @@ def contextualise_issue(issue: TechDebtIssue) -> IssueWithContext:
                 from_line = None
                 to_line = None
                 if file_ref.line_start is not None:
-                    from_line = str(max(1, file_ref.line_start - 5))
+                    from_line = max(1, file_ref.line_start - 5)
                 if file_ref.line_end is not None:
-                    to_line = str(file_ref.line_end + 5)
+                    to_line = file_ref.line_end + 5
 
                 content = read_file(
                     file_ref.path,

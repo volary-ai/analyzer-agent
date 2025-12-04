@@ -129,6 +129,7 @@ def main() -> int:
             tool = web_answers_tool_factory(api=api, model=args.delegate_model)
             question = sys.stdin.read().strip()
             print(tool(question))
+            api.print_usage_summary()
     return 0
 
 
