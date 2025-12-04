@@ -138,12 +138,24 @@ class TestPythonTypeToJsonSchema:
         assert "content" in items["required"]
         assert "status" in items["required"]
 
-    def test_unknown_type_defaults_to_string(self) -> None:
-        """Test that unknown types default to string."""
+    def test_optional_types(self) -> None:
+        """Test that Optional types (Union with None) extract the correct base type."""
+        # Test int | None (Python 3.10+ syntax)
+        json_type, items = _python_type_to_json_schema(int | None)
+        assert json_type == "integer", "int | None should return 'integer', not 'string'"
+        assert items is None
 
-        class CustomType:
-            pass
-
-        json_type, items = _python_type_to_json_schema(CustomType)
+        # Test str | None
+        json_type, items = _python_type_to_json_schema(str | None)
         assert json_type == "string"
+        assert items is None
+
+        # Test float | None
+        json_type, items = _python_type_to_json_schema(float | None)
+        assert json_type == "number"
+        assert items is None
+
+        # Test bool | None
+        json_type, items = _python_type_to_json_schema(bool | None)
+        assert json_type == "boolean"
         assert items is None
