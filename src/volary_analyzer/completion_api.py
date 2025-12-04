@@ -345,12 +345,13 @@ def tool_prompt(tool: Callable) -> dict:
     }
 
 
-class InvalidToolArgOriginTypeException(Exception):
+class InvalidToolArgOriginTypeError(Exception):
     """Raised when a tool argument has an unsupported origin type."""
 
     def __init__(self, origin):
         self.origin = origin
         super().__init__(f"Unsupported tool argument origin type: {origin}")
+
 
 def _python_type_to_json_schema(python_type):
     """
@@ -360,7 +361,7 @@ def _python_type_to_json_schema(python_type):
     # Handle Union types (e.g., int | None, Optional[int])
     origin = get_origin(python_type)
     # Check for Union type (both typing.Union and types.UnionType from Python 3.10+)
-    if origin is Union or (hasattr(origin, '__name__') and origin.__name__ == 'UnionType'):
+    if origin is Union or (hasattr(origin, "__name__") and origin.__name__ == "UnionType"):
         # Get the non-None types from the union
         args = get_args(python_type)
         non_none_types = [arg for arg in args if arg is not type(None)]
@@ -368,7 +369,7 @@ def _python_type_to_json_schema(python_type):
         # If there's exactly one non-None type, use that
         if len(non_none_types) == 1:
             return _python_type_to_json_schema(non_none_types[0])
-        raise InvalidToolArgOriginTypeException(origin=origin)
+        raise InvalidToolArgOriginTypeError(origin=origin)
 
     # Handle List types
     if origin is list:
@@ -407,6 +408,6 @@ def _python_type_to_json_schema(python_type):
 
     json_type = type_mapping.get(python_type)
     if json_type is None:
-        raise InvalidToolArgOriginTypeException(origin=origin)
+        raise InvalidToolArgOriginTypeError(origin=origin)
 
     return json_type, None
