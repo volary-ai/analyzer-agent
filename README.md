@@ -22,7 +22,7 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - uses: volary-ai/analyzer-agent@v0.1.1
+      - uses: volary-ai/analyzer-agent@v0.1.2
         with:
           completions-api-key: ${{ secrets.OPENROUTER_API_KEY }}
 ```
