@@ -3,7 +3,7 @@
 import hashlib
 import json
 import subprocess
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from pydantic import Field
@@ -14,7 +14,6 @@ from .output_schemas import TechDebtIssue
 class SavedTechDebtIssue(TechDebtIssue):
     created: datetime = Field()
     id: str = Field()
-
 
 
 def _get_repo_id() -> str:
@@ -117,7 +116,7 @@ def save_analysis_history(cache_dir: str, new_issues: list[TechDebtIssue]) -> No
         return
 
     history_file = get_history_file_path(cache_dir)
-    timestamp = datetime.now(timezone.utc).isoformat()
+    timestamp = datetime.now(UTC).isoformat()
 
     with open(history_file, "a", encoding="utf-8") as f:
         for issue in new_issues:

@@ -247,7 +247,7 @@ def query_issues_factory(collection: chromadb.Collection) -> Callable[[list[str]
                 ret.append(f"   URL: {url}")
             elif source == "analysis_history":
                 files = meta.get("files", "")
-                ret.append(f"   Source: Previous Analysis")
+                ret.append("   Source: Previous Analysis")
                 ret.append(f"   Title: {title}")
                 if files:
                     ret.append(f"   Files: {files}")
