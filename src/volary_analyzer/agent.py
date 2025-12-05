@@ -268,7 +268,9 @@ class Agent:
                 else:
                     tool_call_futures.append(executor.submit(self._call_tool, tool, tc))
 
-            for future in as_completed(tool_call_futures):
+            # TODO(jon): Better timeouts: we have 2 classes of tool calls: basic tool, and sub-agents, which have
+            #  different expectations. The 4 mins here seems like it would catch an obviously erroneous run at least.
+            for future in as_completed(tool_call_futures, timeout=240.0):
                 result = future.result()
                 results.append(result)
 

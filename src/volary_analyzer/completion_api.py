@@ -10,7 +10,7 @@ from typing import (
     get_type_hints,
 )
 
-import requests
+import httpx
 from docstring_parser import parse
 from pydantic import BaseModel
 from rich.console import Console
@@ -265,16 +265,18 @@ def complete(
         payload["response_format"] = response_format
 
     try:
-        resp = requests.post(
+        resp = httpx.post(
             url=endpoint,
             headers={
                 "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",
             },
             json=payload,
-            timeout=60,
+            timeout=httpx.Timeout(60.0, connect=10.0),
         )
-    except requests.exceptions.RequestException as e:
+    except httpx.TimeoutException as e:
+        raise CompletionApiError(f"Request timed out after 60 seconds: {e}") from e
+    except httpx.RequestError as e:
         raise CompletionApiError(f"Network error when calling CompletionApi API: {e}") from e
 
     if resp.status_code != 200:

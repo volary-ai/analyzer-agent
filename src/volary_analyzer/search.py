@@ -1,6 +1,6 @@
 """Web search functionality using DuckDuckGo."""
 
-import requests
+import httpx
 from bs4 import BeautifulSoup
 from ddgs import DDGS
 
@@ -75,10 +75,11 @@ def fetch_page_content(url: str, from_char: int = 0, to_char: int = _DEFAULT_CHU
         # Check if page is already cached
         if url not in _page_cache:
             # Fetch and cache the full page
-            response = requests.get(
+            response = httpx.get(
                 url,
-                timeout=10,
+                timeout=10.0,
                 headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"},
+                follow_redirects=True,
             )
             response.raise_for_status()
 
