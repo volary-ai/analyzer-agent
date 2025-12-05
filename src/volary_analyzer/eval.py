@@ -22,7 +22,7 @@ from .output_schemas import (
 )
 from .prompts import EVAL_PROMPT, EVAL_SYSTEM_PROMPT
 from .tools import query_issues_factory, read_file, web_answers_tool_factory
-from .vectorised_issue_search import github_vector_db
+from .vectorised_issue_search import issue_vector_db
 
 console = Console(stderr=True)  # Output to stderr so stdout is clean for piping
 
@@ -75,15 +75,18 @@ def eval(
             model=search_model,
         )
     ]
-    github_issue_instruction = ""
-    if repo_path := get_github_repo():
-        chroma_client = chromadb.PersistentClient(path=cache_dir)
+    repo_path = get_github_repo()
+
+    # Always create issue vector DB (includes analysis history)
+    chroma_client = chromadb.PersistentClient(path=cache_dir)
+    if repo_path:
         gh_client = get_github_client()
-        collection = github_vector_db(chroma_client, gh_client, repo_path)
-        tools.append(query_issues_factory(collection))
-        github_issue_instruction = "You MUST search for related issues with query_issues() to make sure you're not reporting issues that have already been considered."
+        collection = issue_vector_db(chroma_client, cache_dir, gh_client, repo_path)
     else:
-        console.print("I notice this isn't a GitHub repo. We have no access to your issues so may report duplicates.")
+        # Still create collection with just analysis history
+        collection = issue_vector_db(chroma_client, cache_dir)
+
+    tools.append(query_issues_factory(collection))
 
     issues_with_context = []
     for issue in analysis.issues:
@@ -92,7 +95,7 @@ def eval(
     evaluation_input = EvaluationInput(issues=issues_with_context)
 
     eval_agent = Agent(
-        instruction=EVAL_SYSTEM_PROMPT.format(github_issue_instruction=github_issue_instruction),
+        instruction=EVAL_SYSTEM_PROMPT,
         model=coordinator_model,
         api=api,
         agent_name="Evaluator",

@@ -5,6 +5,8 @@ import chromadb
 from github import Github
 from github.GithubObject import NotSet
 
+from .analysis_history import load_analysis_history
+
 
 def _get_github_issues(gh_client: Github, repo_path: str, since: str | None) -> list[dict]:
     """
@@ -42,7 +44,7 @@ def _get_github_issues(gh_client: Github, repo_path: str, since: str | None) -> 
     return ret
 
 
-def _index_issues(collection: chromadb.Collection, issues: list[dict]) -> None:
+def _index_github_issues(collection: chromadb.Collection, issues: list[dict]) -> None:
     """
     Index GitHub issues into ChromaDB collection.
 
@@ -63,10 +65,12 @@ def _index_issues(collection: chromadb.Collection, issues: list[dict]) -> None:
         doc_text = f"{title}\n\n{body}"
 
         documents.append(doc_text)
-        ids.append(f"issue_{issue['number']}")
+        issue_id = f"github_{issue['number']}"
+        ids.append(issue_id)
         metadata.append(
             {
-                "number": issue["number"],
+                "issue_id": issue_id,
+                "source": "github",
                 "state": issue["state"],
                 "url": issue["html_url"],
                 "title": title,
@@ -87,25 +91,89 @@ def _index_issues(collection: chromadb.Collection, issues: list[dict]) -> None:
     )
 
 
-def github_vector_db(chroma_client: chromadb.ClientAPI, gh_client: Github, repo_path: str) -> chromadb.Collection:
+def _index_analysis_history(collection: chromadb.Collection, history_issues: list) -> None:
     """
-    Indexes a GitHub repo into a vector db.
+    Index analysis history (previous tech debt issues) into ChromaDB collection.
+
+    Args:
+        collection: ChromaDB collection to upsert documents into
+        history_issues: List of SavedTechDebtIssue objects from previous analyses
+    """
+    if not history_issues:
+        return
+
+    documents = []
+    ids = []
+    metadata = []
+
+    for issue in history_issues:
+        # Combine title, description, and recommended action for better search
+        doc_text = f"{issue.title}\n\n{issue.short_description}\n\nRecommended action: {issue.recommended_action}"
+        if issue.impact:
+            doc_text += f"\n\nImpact: {issue.impact}"
+
+        documents.append(doc_text)
+        ids.append(issue.id)
+        metadata.append(
+            {
+                "issue_id": issue.id,
+                "title": issue.title,
+                "source": "analysis_history",
+                "files": ", ".join(f.path for f in issue.files) if issue.files else "",
+            }
+        )
+
+    # Upsert documents (update existing, add new)
+    collection.upsert(
+        ids=ids,
+        metadatas=metadata,
+        documents=documents,
+    )
+
+
+def issue_vector_db(
+    chroma_client: chromadb.ClientAPI,
+    cache_dir: str,
+    gh_client: Github | None = None,
+    repo_path: str | None = None,
+) -> chromadb.Collection:
+    """
+    Create a vector DB with both GitHub issues and analysis history.
 
     Args:
         chroma_client: The ChromaDB client
-        gh_client: Authenticated PyGithub client
-        repo_path: Repository path in format "owner/repo"
+        cache_dir: Cache directory path for analysis history
+        gh_client: Optional authenticated PyGithub client
+        repo_path: Optional repository path in format "owner/repo"
 
     Returns:
-        The ChromaDB collection with indexed issues
+        The ChromaDB collection with indexed issues and history
     """
-    print(f"Indexing GitHub issues for {repo_path}...", file=sys.stderr)
-    collection_name = f"github.com_{repo_path.replace('/', '_')}"
+
+    # Determine collection name based on repo
+    if repo_path:
+        collection_name = f"issues_{repo_path.replace('/', '_')}"
+    else:
+        # Use a generic name if no repo info
+        from .analysis_history import _get_repo_id
+
+        collection_name = f"issues_{_get_repo_id()}"
+
     collection = chroma_client.get_or_create_collection(collection_name)
     collection_meta = collection.metadata or {}
     last_sync = collection_meta.get("last_sync")
-    issues = _get_github_issues(gh_client=gh_client, repo_path=repo_path, since=last_sync)
-    _index_issues(collection=collection, issues=issues)
-    print(f"Indexed {len(issues)} new issues...", file=sys.stderr)
+
+    # Index GitHub issues if available
+    if gh_client and repo_path:
+        print(f"Indexing GitHub issues for {repo_path}...", file=sys.stderr)
+        github_issues = _get_github_issues(gh_client=gh_client, repo_path=repo_path, since=last_sync)
+        _index_github_issues(collection=collection, issues=github_issues)
+        print(f"Indexed {len(github_issues)} GitHub issues...", file=sys.stderr)
+
+    # Index analysis history
+    history_issues = load_analysis_history(cache_dir, since=last_sync)
+    if history_issues:
+        print(f"Indexing {len(history_issues)} issues from analysis history...", file=sys.stderr)
+        _index_analysis_history(collection=collection, history_issues=history_issues)
 
     return collection
