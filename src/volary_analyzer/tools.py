@@ -224,20 +224,29 @@ def query_issues_factory(collection: chromadb.Collection) -> Callable[[list[str]
         """
         results = collection.query(query_texts=queries, n_results=5)
         ret: list[str] = []
-        for i, (doc, distance, doc_id, meta) in enumerate(
-            zip(
-                results["documents"][0],
-                results["distances"][0],
-                results["ids"][0],
-                results["metadatas"][0],
-                strict=False,
-            ),
-            1,
-        ):
-            ret.append(f"===== {i}. [ID: {doc_id}] (distance: {distance:.4f}) ======")
-            ret.append(f"   Issue #{meta['number']} ({meta['state'].upper()}): {meta['title']}")
-            ret.append(f"   URL: {meta['url']}")
-            ret.append(f"   Body:\n{doc}")
+
+        # Process results for each query
+        for query_idx, query_text in enumerate(queries):
+            if query_idx > 0:
+                ret.append("\n" + "=" * 80)
+            ret.append(f"\nResults for query: {query_text}\n")
+
+            for i, (doc, distance, doc_id, meta) in enumerate(
+                zip(
+                    results["documents"][query_idx],
+                    results["distances"][query_idx],
+                    results["ids"][query_idx],
+                    results["metadatas"][query_idx],
+                    strict=False,
+                ),
+                1,
+            ):
+                ret.append(
+                    f"===== {i}. [ID: {doc_id}] (distance: {distance:.4f}) ======"
+                    f"   Issue #{meta['number']} ({meta['state'].upper()}): {meta['title']}"
+                    f"   URL: {meta['url']}"
+                    f"   Body:\n{doc}"
+                )
 
         return "\n".join(ret)
 
