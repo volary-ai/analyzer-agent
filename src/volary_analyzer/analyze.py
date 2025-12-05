@@ -1,7 +1,19 @@
+from collections.abc import Callable
+
+import chromadb
+
 from .agent import Agent, CompletionApi, console
 from .output_schemas import TechDebtAnalysis
-from .prompts import ANALYZER_PROMPT, START_ANALYSIS_PROMPT
-from .tools import delegate_tool_factory, grep, ls, read_file, web_answers_tool_factory
+from .prompts import ANALYZER_PROMPT, EVAL_SYSTEM_PROMPT, START_ANALYSIS_PROMPT
+from .tools import (
+    delegate_tool_factory,
+    grep,
+    ls,
+    query_issues_factory,
+    read_file,
+    report_issue_tool_factory,
+    web_answers_tool_factory,
+)
 
 
 def analyze(
@@ -9,23 +21,46 @@ def analyze(
     api: CompletionApi,
     coordinator_model: str,
     delegate_model: str,
+    issues_collection: chromadb.Collection | None = None,
 ) -> TechDebtAnalysis:
-    # Gather repository context
     repo_context = get_repo_context()
 
-    tools = [ls, read_file, grep, web_answers_tool_factory(api, delegate_model)]
+    web_answers_tool = web_answers_tool_factory(api, delegate_model)
+
+    eval_tools: list[Callable] = [web_answers_tool]
+
+    github_issue_instruction = ""
+    if issues_collection:
+        query_issues_tool = query_issues_factory(issues_collection)
+        eval_tools.append(query_issues_tool)
+        github_issue_instruction = (
+            "You MUST search for related issues with query_issues() to make sure you're not "
+            "reporting issues that have already been considered."
+        )
+
+    # Add report_issue tool for early feedback
+    report_issue_tool = report_issue_tool_factory(
+        api=api,
+        model=coordinator_model,
+        agent_instruction=EVAL_SYSTEM_PROMPT.format(github_issue_instruction=github_issue_instruction),
+        tools=eval_tools,
+    )
+    base_tools = [
+        ls,
+        read_file,
+        grep,
+        web_answers_tool,
+    ]
+    delegate_tool = delegate_tool_factory(
+        api=api,
+        model=delegate_model,
+        tools=base_tools,
+        repo_context=repo_context,
+    )
 
     coordinator_agent = Agent(
         instruction=ANALYZER_PROMPT,
-        tools=tools
-        + [
-            delegate_tool_factory(
-                api=api,
-                model=delegate_model,
-                tools=tools,
-                repo_context=repo_context,
-            )
-        ],
+        tools=base_tools + [delegate_tool, report_issue_tool],
         model=coordinator_model,
         api=api,
         agent_name="Analyzer",

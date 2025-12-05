@@ -326,10 +326,15 @@ def tool_prompt(tool: Callable) -> dict:
                 break
 
         # Build property definition
-        prop = {"type": json_type, "description": param_desc}
-
-        if items:
-            prop["items"] = items
+        if json_type == "object" and items and isinstance(items, dict) and "properties" in items:
+            # This is a Pydantic model schema - inline it directly
+            prop = items.copy()
+            if param_desc:
+                prop["description"] = param_desc
+        else:
+            prop = {"type": json_type, "description": param_desc}
+            if items:
+                prop["items"] = items
 
         properties[param_name] = prop
 
@@ -360,6 +365,13 @@ def _python_type_to_json_schema(python_type):
     Converts Python type hints to JSON Schema types.
     Returns (type, items) tuple where items is used for array types.
     """
+    # Handle Pydantic BaseModel types - inline their schema
+    if isinstance(python_type, type) and issubclass(python_type, BaseModel):
+        schema = python_type.model_json_schema()
+        # Return the schema as a dict (not just "object")
+        # The caller will need to handle this specially
+        return "object", schema
+
     # Handle Union types (e.g., int | None, Optional[int])
     origin = get_origin(python_type)
     # Check for Union type (both typing.Union and types.UnionType from Python 3.10+)

@@ -1,3 +1,5 @@
+from pydantic import BaseModel, Field
+
 from ..agent import (
     TODO,
 )
@@ -102,6 +104,58 @@ class TestToolPrompt:
         assert params["properties"] == {}
         assert params["required"] == []
 
+    def test_tool_prompt_with_pydantic_model(self) -> None:
+        """Test tool_prompt with a Pydantic BaseModel parameter."""
+
+        class TestIssue(BaseModel):
+            """A test issue model."""
+
+            title: str = Field(description="The issue title")
+            description: str = Field(description="Issue description")
+            priority: int = Field(description="Priority level")
+            tags: list[str] = Field(default=[], description="Issue tags")
+
+        def report_issue(issue: TestIssue) -> str:
+            """
+            Report an issue for evaluation.
+
+            :param issue: The issue to report
+            :return: Evaluation result
+            """
+            return "evaluated"
+
+        result = tool_prompt(report_issue)
+
+        assert result["type"] == "function"
+        assert result["function"]["name"] == "report_issue"
+
+        params = result["function"]["parameters"]
+        assert params["type"] == "object"
+        assert "issue" in params["properties"]
+
+        # Check that the issue parameter has the full Pydantic schema inlined
+        issue_schema = params["properties"]["issue"]
+        assert issue_schema["type"] == "object"
+        assert "properties" in issue_schema
+        assert "title" in issue_schema["properties"]
+        assert "description" in issue_schema["properties"]
+        assert "priority" in issue_schema["properties"]
+        assert "tags" in issue_schema["properties"]
+
+        # Verify field types
+        assert issue_schema["properties"]["title"]["type"] == "string"
+        assert issue_schema["properties"]["description"]["type"] == "string"
+        assert issue_schema["properties"]["priority"]["type"] == "integer"
+        assert issue_schema["properties"]["tags"]["type"] == "array"
+        assert issue_schema["properties"]["tags"]["items"]["type"] == "string"
+
+        # Check required fields (tags has default, so not required)
+        assert "required" in issue_schema
+        assert "title" in issue_schema["required"]
+        assert "description" in issue_schema["required"]
+        assert "priority" in issue_schema["required"]
+        assert "tags" not in issue_schema["required"]
+
 
 class TestPythonTypeToJsonSchema:
     """Tests for the _python_type_to_json_schema function."""
@@ -159,3 +213,28 @@ class TestPythonTypeToJsonSchema:
         json_type, items = _python_type_to_json_schema(bool | None)
         assert json_type == "boolean"
         assert items is None
+
+    def test_pydantic_basemodel(self) -> None:
+        """Test that Pydantic BaseModel types are converted to full schemas."""
+
+        class SimpleModel(BaseModel):
+            """A simple test model."""
+
+            name: str
+            count: int
+
+        json_type, schema = _python_type_to_json_schema(SimpleModel)
+
+        # Should return "object" as the type
+        assert json_type == "object"
+
+        # Should return the full Pydantic schema
+        assert schema is not None
+        assert "properties" in schema
+        assert "name" in schema["properties"]
+        assert "count" in schema["properties"]
+        assert schema["properties"]["name"]["type"] == "string"
+        assert schema["properties"]["count"]["type"] == "integer"
+        assert "required" in schema
+        assert "name" in schema["required"]
+        assert "count" in schema["required"]

@@ -9,6 +9,7 @@ import pathspec
 
 from .agent import Agent
 from .completion_api import CompletionApi
+from .output_schemas import IssueWithContext, TechDebtIssue
 from .prompts import ANALYSIS_DELEGATE_PROMPT, ANALYZER_PROMPT, SEARCH_PROMPT
 from .search import fetch_page_content, web_search
 
@@ -185,6 +186,42 @@ def grep(pattern: str, path: str = ".", file_pattern: str = "*") -> str:
         return f"Error executing grep: {str(e)}"
 
 
+def contextualise_issue(issue: TechDebtIssue) -> IssueWithContext:
+    """
+    Add file content context to a technical debt issue.
+
+    Reads the file contents referenced in the issue (with +/- 5 lines of context)
+    and returns an IssueWithContext with the file contents included.
+
+    Args:
+        issue: The technical debt issue to contextualize
+
+    Returns:
+        IssueWithContext with file contents populated
+    """
+    file_contents = {}
+    if issue.files:
+        for file_ref in issue.files:
+            try:
+                from_line = None
+                to_line = None
+                if file_ref.line_start is not None:
+                    from_line = max(1, file_ref.line_start - 5)
+                if file_ref.line_end is not None:
+                    to_line = file_ref.line_end + 5
+
+                content = read_file(
+                    file_ref.path,
+                    from_line=from_line,
+                    to_line=to_line,
+                )
+                file_contents[file_ref.path] = content
+            except Exception as e:
+                file_contents[file_ref.path] = f"Error reading file: {e}"
+
+    return IssueWithContext(issue=issue, file_contents=file_contents)
+
+
 def query_issues_factory(collection: chromadb.Collection) -> Callable[[list[str]], str]:
     """
     Creates a query issues tool for semantic search over GitHub issues and PRs.
@@ -329,3 +366,82 @@ def web_answers_tool_factory(api: CompletionApi, model: str) -> Callable[[str], 
         return search_agent.run()
 
     return web_answers
+
+
+def report_issue_tool_factory(
+    api: CompletionApi, model: str, agent_instruction: str, tools: list
+) -> Callable[[TechDebtIssue], str]:
+    """
+    Creates a report_issue tool that evaluates a single issue for quality and relevance.
+
+    Args:
+        api: CompletionApi instance
+        model: Model to use for evaluation
+        agent_instruction: Instruction for the system prompt for the agent
+        tools: Tools available to the eval agent (query_issues, web_answers)
+
+    Returns:
+        Function that evaluates a single issue and returns critique
+    """
+
+    def report_issue(issue: TechDebtIssue) -> str:
+        """
+        Report a potential technical debt issue for early feedback and critique.
+
+        Use this tool to validate issues as you discover them, before continuing exploration.
+        The evaluation will check if the issue is objective, actionable, production-relevant,
+        and not a duplicate of existing issues.
+
+        This helps you:
+        - Avoid wasting time on subjective or opinion-based suggestions
+        - Ensure issues are actionable with clear next steps
+        - Check if similar issues have already been reported
+        - Get feedback on impact and effort estimates
+
+        Usage notes:
+        - Call this as soon as you identify a potential issue
+        - Use the feedback to refine your analysis or move on
+        - Don't report issues that receive negative critique
+        - Focus your exploration based on what kinds of issues are valued
+
+        Args:
+            issue: The technical debt issue to evaluate (with title, short_description, impact, recommended_action, files)
+
+        Returns:
+            Critique of the issue with feedback on quality, relevance, and whether to include it
+        """
+        issue_with_context = contextualise_issue(issue)
+
+        # Create eval agent
+        eval_agent = Agent(
+            instruction=agent_instruction,
+            model=model,
+            api=api,
+            agent_name="Issue Evaluator",
+            tools=tools,
+        )
+
+        # Evaluate the single issue
+        eval_prompt = f"""
+Evaluate this single technical debt issue for quality and relevance:
+
+{issue_with_context.model_dump_json(indent=2)}
+
+Provide a critique that answers:
+1. Is this issue objective (based on facts/standards) or subjective (opinion/preference)?
+2. Is it actionable with clear next steps?
+3. Is it production-relevant (not just test/config/docs)?
+4. If applicable, are there duplicate/related GitHub issues?
+5. What's the estimated impact (high/medium/low) and effort (high/medium/low)?
+6. Should this issue be included in the final report? Why or why not?
+
+Return your critique as a clear, concise summary.
+"""
+
+        try:
+            critique = eval_agent.run(prompt=eval_prompt)
+            return critique
+        except Exception as e:
+            return f"Error evaluating issue: {e}"
+
+    return report_issue

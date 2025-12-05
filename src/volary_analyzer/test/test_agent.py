@@ -1,5 +1,7 @@
 import json
 
+from pydantic import BaseModel, Field
+
 from ..agent import (
     Agent,
     CompletionApi,
@@ -266,3 +268,84 @@ class TestToolCalling:
         assert result_strings.tool_args == {"start": "5", "end": "10"}
         # The tool should raise an error if it receives strings instead of ints
         assert result_strings.error is not None or "5, 6, 7, 8, 9, 10" in result_strings.message["content"]
+
+    def test_pydantic_model_parameter_handling(self) -> None:
+        """Test that tools with Pydantic model parameters work correctly end-to-end."""
+
+        class IssueReport(BaseModel):
+            """A tech debt issue report."""
+
+            title: str = Field(description="Issue title")
+            severity: str = Field(description="Severity level")
+            line_number: int = Field(description="Line where issue occurs")
+            fixed: bool = Field(default=False, description="Whether issue is fixed")
+
+        def report_issue(issue: IssueReport) -> str:
+            """
+            Report a technical debt issue.
+
+            :param issue: The issue to report
+            :return: Confirmation message
+            """
+            status = "fixed" if issue.fixed else "open"
+            return f"{issue.title} (line {issue.line_number}): {issue.severity} - {status}"
+
+        api = CompletionApi(api_key="test-key", endpoint="http://test")
+        agent = Agent(
+            instruction="Test agent",
+            tools=[report_issue],
+            model="test-model",
+            api=api,
+        )
+
+        tool_call = ToolCall(
+            id="call_issue_1",
+            function=ToolFunction(
+                name="report_issue",
+                arguments=json.dumps(
+                    {
+                        "issue": {
+                            "title": "Unused variable",
+                            "severity": "low",
+                            "line_number": 42,
+                            # fixed omitted - should use default False
+                        }
+                    }
+                ),
+            ),
+            type="function",
+        )
+
+        result = agent._call_tool(report_issue, tool_call)
+
+        assert result.error is None, f"Tool execution failed: {result.error}"
+        assert "Unused variable" in result.message["content"]
+        assert "line 42" in result.message["content"]
+        assert "low" in result.message["content"]
+        assert "open" in result.message["content"]  # default fixed=False
+
+        tool_call_complete = ToolCall(
+            id="call_issue_2",
+            function=ToolFunction(
+                name="report_issue",
+                arguments=json.dumps(
+                    {
+                        "issue": {
+                            "title": "SQL injection vulnerability",
+                            "severity": "critical",
+                            "line_number": 123,
+                            "fixed": True,
+                        }
+                    }
+                ),
+            ),
+            type="function",
+        )
+
+        result_complete = agent._call_tool(report_issue, tool_call_complete)
+
+        assert result_complete.error is None
+        assert "SQL injection vulnerability" in result_complete.message["content"]
+        assert "line 123" in result_complete.message["content"]
+        assert "critical" in result_complete.message["content"]
+        assert "fixed" in result_complete.message["content"]

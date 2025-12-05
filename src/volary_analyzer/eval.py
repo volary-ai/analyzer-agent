@@ -9,47 +9,18 @@ from rich.console import Console
 
 from .agent import Agent
 from .completion_api import CompletionApi
-from .github_helper import get_github_client, get_github_repo
 from .output_schemas import (
     EvaluatedTechDebtAnalysis,
     EvaluatedTechDebtIssue,
     Evaluation,
     EvaluationCriteria,
     EvaluationInput,
-    IssueWithContext,
     TechDebtAnalysis,
-    TechDebtIssue,
 )
 from .prompts import EVAL_PROMPT, EVAL_SYSTEM_PROMPT
-from .tools import query_issues_factory, read_file, web_answers_tool_factory
-from .vectorised_issue_search import github_vector_db
+from .tools import contextualise_issue, query_issues_factory, web_answers_tool_factory
 
 console = Console(stderr=True)  # Output to stderr so stdout is clean for piping
-
-
-def contextualise_issue(issue: TechDebtIssue) -> IssueWithContext:
-    file_contents = {}
-    if issue.files:
-        for file_ref in issue.files:
-            try:
-                from_line = None
-                to_line = None
-                if file_ref.line_start is not None:
-                    from_line = max(1, file_ref.line_start - 5)
-                if file_ref.line_end is not None:
-                    to_line = file_ref.line_end + 5
-
-                content = read_file(
-                    file_ref.path,
-                    from_line=from_line,
-                    to_line=to_line,
-                )
-                file_contents[file_ref.path] = content
-            except Exception as e:
-                console.print(f"[yellow]Warning: Could not read {file_ref.path}: {e}[/yellow]")
-                file_contents[file_ref.path] = f"Error reading file: {e}"
-
-    return IssueWithContext(issue=issue, file_contents=file_contents)
 
 
 def eval(
@@ -58,7 +29,7 @@ def eval(
     api: CompletionApi,
     coordinator_model: str,
     search_model: str,
-    cache_dir: str,
+    issues_collection: chromadb.Collection | None = None,
 ) -> EvaluatedTechDebtAnalysis:
     if not analysis.issues:
         console.print("[yellow]No issues to evaluate[/yellow]")
@@ -76,14 +47,13 @@ def eval(
         )
     ]
     github_issue_instruction = ""
-    if repo_path := get_github_repo():
-        chroma_client = chromadb.PersistentClient(path=cache_dir)
-        gh_client = get_github_client()
-        collection = github_vector_db(chroma_client, gh_client, repo_path)
-        tools.append(query_issues_factory(collection))
-        github_issue_instruction = "You MUST search for related issues with query_issues() to make sure you're not reporting issues that have already been considered."
-    else:
-        console.print("I notice this isn't a GitHub repo. We have no access to your issues so may report duplicates.")
+    if issues_collection:
+        query_issues_tool = query_issues_factory(issues_collection)
+        tools.append(query_issues_tool)
+        github_issue_instruction = (
+            "You MUST search for related issues with query_issues() to make sure you're not "
+            "reporting issues that have already been considered."
+        )
 
     issues_with_context = []
     for issue in analysis.issues:
