@@ -241,10 +241,12 @@ def query_issues_factory(collection: chromadb.Collection) -> Callable[[list[str]
                 ),
                 1,
             ):
-                ret.append(f"===== {i}. [ID: {doc_id}] (distance: {distance:.4f}) ======")
-                ret.append(f"   Issue #{meta['number']} ({meta['state'].upper()}): {meta['title']}")
-                ret.append(f"   URL: {meta['url']}")
-                ret.append(f"   Body:\n{doc}")
+                ret.append(
+                    f"===== {i}. [ID: {doc_id}] (distance: {distance:.4f}) ======"
+                    f"   Issue #{meta['number']} ({meta['state'].upper()}): {meta['title']}"
+                    f"   URL: {meta['url']}"
+                    f"   Body:\n{doc}"
+                )
 
         return "\n".join(ret)
 
