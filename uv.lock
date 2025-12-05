@@ -2150,11 +2150,11 @@ dependencies = [
     { name = "chromadb" },
     { name = "ddgs" },
     { name = "docstring-parser" },
+    { name = "httpx" },
     { name = "pathspec" },
     { name = "platformdirs" },
     { name = "pydantic" },
     { name = "pygithub" },
-    { name = "requests" },
     { name = "rich" },
 ]
 
@@ -2170,12 +2170,12 @@ requires-dist = [
     { name = "chromadb", specifier = ">=0.5.23" },
     { name = "ddgs", specifier = ">=9.9.2" },
     { name = "docstring-parser", specifier = ">=0.17.0" },
+    { name = "httpx", specifier = ">=0.28.1" },
     { name = "pathspec", specifier = ">=0.12.1" },
     { name = "platformdirs", specifier = ">=4.3.6" },
     { name = "pydantic", specifier = ">=2.12.5" },
     { name = "pygithub", specifier = ">=2.5.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.3.4" },
-    { name = "requests", specifier = ">=2.32.5" },
     { name = "rich", specifier = ">=14.2.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.8.4" },
 ]

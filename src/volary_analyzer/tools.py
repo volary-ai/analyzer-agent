@@ -106,7 +106,9 @@ def read_file(path: str, from_line: int | None = None, to_line: int | None = Non
 
     try:
         # Run git blame to get annotation info
-        output = subprocess.check_output(["git", "blame", "--date=short", path], text=True, stderr=subprocess.STDOUT)
+        output = subprocess.check_output(
+            ["git", "blame", "--date=short", path], text=True, stderr=subprocess.STDOUT, timeout=30
+        )
 
         # Filter lines if range is specified
         if from_line is not None or to_line is not None:
