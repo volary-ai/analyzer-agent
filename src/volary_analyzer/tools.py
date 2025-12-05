@@ -9,8 +9,8 @@ import pathspec
 
 from .agent import Agent
 from .completion_api import CompletionApi
-from .output_schemas import IssueWithContext, TechDebtIssue
-from .prompts import ANALYSIS_DELEGATE_PROMPT, ANALYZER_PROMPT, SEARCH_PROMPT
+from .output_schemas import IssueWithContext, TechDebtIssue, TechDebtAnalysis, EvaluationInput, Evaluation
+from .prompts import ANALYSIS_DELEGATE_PROMPT, ANALYZER_PROMPT, SEARCH_PROMPT, EVAL_PROMPT
 from .search import fetch_page_content, web_search
 
 _LS_LIMIT = 100
@@ -370,7 +370,7 @@ def web_answers_tool_factory(api: CompletionApi, model: str) -> Callable[[str], 
 
 def report_issue_tool_factory(
     api: CompletionApi, model: str, agent_instruction: str, tools: list
-) -> Callable[[TechDebtIssue], str]:
+) -> Callable:
     """
     Creates a report_issue tool that evaluates a single issue for quality and relevance.
 
@@ -384,18 +384,18 @@ def report_issue_tool_factory(
         Function that evaluates a single issue and returns critique
     """
 
-    def report_issue(issue: TechDebtIssue) -> str:
+    def report_issue(analysis: TechDebtAnalysis) -> str:
         """
-        Report a potential technical debt issue for early feedback and critique.
+        Report a potential technical debt issues for early feedback and critique.
 
-        Use this tool to validate issues as you discover them, before continuing exploration.
-        The evaluation will check if the issue is objective, actionable, production-relevant,
-        and not a duplicate of existing issues.
+        Use this tool to validate issues as you discover them. This can be used once you have done a thorough
+        investigation to get feedback on your work so far. Use this to decide if you have 10-15 good issues before
+        finally reporting your results to the user.
 
         This helps you:
         - Avoid wasting time on subjective or opinion-based suggestions
         - Ensure issues are actionable with clear next steps
-        - Check if similar issues have already been reported
+        - Avoid reporting duplicate issues
         - Get feedback on impact and effort estimates
 
         Usage notes:
@@ -405,12 +405,12 @@ def report_issue_tool_factory(
         - Focus your exploration based on what kinds of issues are valued
 
         Args:
-            issue: The technical debt issue to evaluate (with title, short_description, impact, recommended_action, files)
+            analysis: The technical debt issue to evaluate (with title, short_description, impact, recommended_action, files)
 
         Returns:
             Critique of the issue with feedback on quality, relevance, and whether to include it
         """
-        issue_with_context = contextualise_issue(issue)
+        issues_with_context = [contextualise_issue(issue) for issue in analysis.issues]
 
         # Create eval agent
         eval_agent = Agent(
@@ -421,26 +421,10 @@ def report_issue_tool_factory(
             tools=tools,
         )
 
-        # Evaluate the single issue
-        eval_prompt = f"""
-Evaluate this single technical debt issue for quality and relevance:
-
-{issue_with_context.model_dump_json(indent=2)}
-
-Provide a critique that answers:
-1. Is this issue objective (based on facts/standards) or subjective (opinion/preference)?
-2. Is it actionable with clear next steps?
-3. Is it production-relevant (not just test/config/docs)?
-4. If applicable, are there duplicate/related GitHub issues?
-5. What's the estimated impact (high/medium/low) and effort (high/medium/low)?
-6. Should this issue be included in the final report? Why or why not?
-
-Return your critique as a clear, concise summary.
-"""
-
+        eval_input = EvaluationInput(issues=issues_with_context)
         try:
-            critique = eval_agent.run(prompt=eval_prompt)
-            return critique
+            critique = eval_agent.run(prompt=EVAL_PROMPT % eval_input.model_dump_json(indent=2), output_class=Evaluation)
+            return critique.model_dump_json(indent=2)
         except Exception as e:
             return f"Error evaluating issue: {e}"
 
