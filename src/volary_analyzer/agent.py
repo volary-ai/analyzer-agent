@@ -10,6 +10,7 @@ from typing import (
     Self,
     TypedDict,
     TypeVar,
+    get_type_hints,
     overload,
 )
 
@@ -161,7 +162,20 @@ class Agent:
         tool_args = json.loads(tool_call.function.arguments)
 
         try:
-            tool_result = tool(**tool_args)
+            # Validate Pydantic BaseModel parameters
+            type_hints = get_type_hints(tool)
+            validated_args = {}
+
+            for param_name, param_value in tool_args.items():
+                param_type = type_hints.get(param_name)
+
+                # If parameter is a Pydantic BaseModel, validate it
+                if param_type and isinstance(param_type, type) and issubclass(param_type, BaseModel):
+                    validated_args[param_name] = param_type.model_validate(param_value)
+                else:
+                    validated_args[param_name] = param_value
+
+            tool_result = tool(**validated_args)
 
             # Convert result to string if needed
             if isinstance(tool_result, str):

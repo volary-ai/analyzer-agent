@@ -4,9 +4,13 @@ import argparse
 import os
 import sys
 
+import chromadb
 from platformdirs import user_config_dir
 from pydantic import ValidationError
 from rich.console import Console
+
+from volary_analyzer.github_helper import get_github_client, get_github_repo
+from volary_analyzer.vectorised_issue_search import github_vector_db
 
 from .analyze import analyze
 from .completion_api import CompletionApi
@@ -73,6 +77,12 @@ def main() -> int:
         endpoint=args.completions_endpoint,
     )
 
+    collection: chromadb.Collection | None = None
+    if repo_path := get_github_repo():
+        chroma_client = chromadb.PersistentClient(path=args.cache_dir)
+        gh_client = get_github_client()
+        collection = github_vector_db(chroma_client, gh_client, repo_path)
+
     match args.action:
         case "run":
             console.print("[bold green]Running analysis...[/bold green]")
@@ -80,13 +90,14 @@ def main() -> int:
                 api=api,
                 coordinator_model=args.coordinator_model,
                 delegate_model=args.delegate_model,
+                issues_collection=collection,
             )
             evaluated_analysis = eval(
                 api=api,
                 analysis=analysis,
                 coordinator_model=args.coordinator_model,
                 search_model=args.delegate_model,
-                cache_dir=args.cache_dir,
+                issues_collection=collection,
             )
             print_issues(evaluated_analysis)
             api.print_usage_summary()
@@ -96,6 +107,7 @@ def main() -> int:
                 api=api,
                 coordinator_model=args.coordinator_model,
                 delegate_model=args.delegate_model,
+                issues_collection=collection,
             )
             print(analysis.model_dump_json(indent=2))
             api.print_usage_summary()
@@ -106,7 +118,7 @@ def main() -> int:
                 api=api,
                 analysis=analysis,
                 coordinator_model=args.coordinator_model,
-                cache_dir=args.cache_dir,
+                issues_collection=collection,
                 search_model=args.delegate_model,
             )
             print(evaluated_analysis.model_dump_json(indent=2))

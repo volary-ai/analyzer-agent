@@ -6,11 +6,15 @@ Entrypoint script for the Volary Analyzer Agent GitHub Action.
 import os
 import sys
 
+import chromadb
+
 from src.volary_analyzer.analyze import analyze
 from src.volary_analyzer.completion_api import CompletionApi
 from src.volary_analyzer.eval import eval
 from src.volary_analyzer.print_issues import print_issues, render_summary_markdown
 from src.volary_analyzer.tools import ls_all
+from volary_analyzer.github_helper import get_github_client
+from volary_analyzer.vectorised_issue_search import github_vector_db
 
 DEFAULT_COMPLETION_ENDPOINT = "https://openrouter.ai/api/v1/chat/completions"
 DEFAULT_COORDINATOR_MODEL = "openai/gpt-5.1"
@@ -58,17 +62,22 @@ def main() -> int:
     revision = os.environ.get("GITHUB_SHA")
     repo = os.environ.get("GITHUB_REPOSITORY")
 
+    chroma_client = chromadb.PersistentClient(path=cache_dir)
+    gh_client = get_github_client()
+    collection = github_vector_db(chroma_client, gh_client, repo)
+
     try:
         analysis = analyze(
             api=api,
             coordinator_model=coordinator_model,
             delegate_model=delegate_model,
+            issues_collection=collection,
         )
         evaluated_analysis = eval(
             api=api,
             analysis=analysis,
             coordinator_model=coordinator_model,
-            cache_dir=cache_dir,
+            issues_collection=collection,
             search_model=delegate_model,
         )
         print_issues(evaluated_analysis)
